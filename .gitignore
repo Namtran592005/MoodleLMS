@@ -10,6 +10,7 @@ logs/
 
 # DOCS (huong dan noi bo, khong commit)
 docs/
+scripts/gen_docs.py
 
 # BACKUP
 *.sql
