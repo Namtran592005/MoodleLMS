@@ -10,7 +10,7 @@
 		header {
 			Server "TVC-LMS-Cloud"
 			X-Content-Type-Options "nosniff"
-			X-Frame-Options "SAMEORIGIN"
+			# X-Frame-Options do Moodle tu gui (tranh trung header)
 			Permissions-Policy "unload=*"
 			# CSP: chat nhung du cho Moodle (unsafe-inline/eval la bat buoc
 			# cho YUI + inline JS/CSS cua Moodle, khong bo duoc)
@@ -21,10 +21,14 @@
 			max_size 200MB
 		}
 
+		# Retry backend toi 30s (Apache start cham sau restart) thay vi 502 ngay
 		reverse_proxy moodle_web:80 {
 			header_up Host {host}
 			header_up X-Real-IP {remote_host}
 			header_up X-Forwarded-Port {server_port}
+			header_down -Server
+			lb_try_duration 30s
+			lb_try_interval 500ms
 		}
 	}
 
