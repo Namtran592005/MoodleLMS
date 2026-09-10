@@ -7,6 +7,10 @@ Repo này chỉ chứa **khung cấu hình**. Source Moodle, `moodledata`,
 backup SQL, log, file `.env` và docs nội bộ không commit
 (xem `.gitignore`).
 
+## Sơ đồ hệ thống
+
+![Sơ đồ hệ thống Moodle LMS](bieudo.png)
+
 ## Stack
 
 | Service | Image | Vai trò |
