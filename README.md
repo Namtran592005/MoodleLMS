@@ -87,24 +87,26 @@ Chạy 1 lần trên VPS **trước khi** deploy. Đảm bảo SSH key đã logi
 được rồi mới tắt password (kẻo tự khóa mình).
 
 ```bash
-# 1. User deploy co quyen docker (khoi sudo moi lenh)
+# 0. Cai Docker (1 lenh) + cho user hien tai dung docker
+curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER && newgrp docker
+docker compose version   # kiem tra
 
-# 2. Firewall: chi mo SSH/HTTP/HTTPS
+# 1. Firewall: chi mo SSH/HTTP/HTTPS
 sudo apt update && sudo apt install -y ufw fail2ban unattended-upgrades
 sudo ufw allow 22/tcp && sudo ufw allow 80,443/tcp
 sudo ufw --force enable && sudo ufw status
 
-# 3. SSH chi cho key, cam password + root
+# 2. SSH chi cho key, cam password + root
 sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
 sudo systemctl restart ssh
 
-# 4. Chong brute-force SSH + tu va bao mat
+# 3. Chong brute-force SSH + tu va bao mat
 sudo systemctl enable --now fail2ban
 sudo systemctl enable apt-daily-upgrade.timer  # Ubuntu tu bat san
 
-# 5. Khoa file secrets
+# 4. Khoa file secrets
 chmod 600 .env
 ```
 
