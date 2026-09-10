@@ -114,6 +114,32 @@ chmod 600 .env
 kernel mới. Backup `backup/` ra ngoài VPS mỗi đêm (rsync/rclone) —
 mất VPS là mất hết nếu chỉ lưu local.
 
+## Cấu hình VPS theo tải
+
+"Concurrent" = user thao tác cùng lúc (không phải chỉ đăng nhập).
+Ổ cứng luôn dùng NVMe; dung lượng theo `moodledata` (video khóa học
+là phần phình nhanh nhất).
+
+| | ~100 concurrent | ~1000 concurrent |
+|---|---|---|
+| CPU/RAM | 4 vCPU / 8 GB | 16 vCPU / 64 GB |
+| Disk | 100 GB | 500 GB |
+| Mô hình | 1 VPS tất cả trong 1 | 1 VPS lớn, hoặc tách Web + DB riêng khi quá tải |
+
+Tinh chỉnh kèm theo (mặc định trong repo để ở mức 100 user):
+
+| Tham số | 100 user | 1000 user | Sửa ở |
+|---|---|---|---|
+| `innodb_buffer_pool_size` | 2G | 16–24G | thêm vào `command:` của `db` |
+| Redis `maxmemory` | 256–512mb | 2gb | `command:` của `redis` |
+| `opcache.memory_consumption` | 256 | 512 | `php/Dockerfile` |
+| Apache `MaxRequestWorkers` | mặc định | 300–500 | thêm conf Apache riêng |
+
+1000 concurrent trên 1 VPS là ngưỡng cao của Apache prefork +
+mod_php. Nếu CPU/RAM chạm trần: tách MySQL sang VPS riêng
+(đổi `MOODLE_DB_HOST`), rồi nhân bản container `moodle` sau
+load balancer — compose này không cần đổi gì khác.
+
 ## License
 
 PolyForm Noncommercial 1.0.0 — xem `LICENSE-EE.md`.
