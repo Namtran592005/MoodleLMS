@@ -1,53 +1,53 @@
 # Moodle LMS — Docker Skeleton (Production)
 
-Khung trien khai Moodle 5.x bang Docker Compose: Caddy (SSL tu dong) +
+Khung triển khai Moodle 5.x bằng Docker Compose: Caddy (SSL tự động) +
 Apache PHP 8.4 (production) + MySQL 9 LTS + Redis + Ofelia (cron + backup).
 
-Repo nay chi chua **khung cau hinh**. Source Moodle, `moodledata`,
-backup SQL, log, file `.env` va docs noi bo khong commit
+Repo này chỉ chứa **khung cấu hình**. Source Moodle, `moodledata`,
+backup SQL, log, file `.env` và docs nội bộ không commit
 (xem `.gitignore`).
 
 ## Stack
 
-| Service | Image | Vai tro |
+| Service | Image | Vai trò |
 |---|---|---|
-| `setup` | `alpine` | Chay 1 lan: tao thu muc + chmod 777 bind mounts |
-| `caddy` | `caddy:alpine` | Reverse proxy 80/443/udp, SSL Let's Encrypt tu dong |
+| `setup` | `alpine` | Chạy 1 lần: tạo thư mục + chmod 777 bind mounts |
+| `caddy` | `caddy:alpine` | Reverse proxy 80/443/udp, SSL Let's Encrypt tự động |
 | `db` | `mysql:9` | MySQL 9 LTS, utf8mb4, log error/slow/general |
 | `redis` | `redis` | Cache + session, 256MB LRU |
 | `moodle` | build `./php` | Apache + PHP 8.4, DocumentRoot `/public` |
-| `cron` | `ofelia` | Cron Moodle 1p + backup DB daily + xoay log 0h VN |
+| `cron` | `ofelia` | Cron Moodle 1 phút + backup DB daily + xoay log 0h VN |
 
-## Cau truc
+## Cấu trúc
 
 ```text
 ├── docker-compose.yml
 ├── Caddyfile
-├── .env.example            # copy thanh .env roi sua password
+├── .env.example            # copy thành .env rồi sửa password
 ├── php/Dockerfile + entrypoint.sh
-├── scripts/db-backup.sh    # backup tay
-├── scripts/db-restore.sh   # restore tay
-├── scripts/log-rotate.sh   # Ofelia goi moi dem
-├── moodle/                 # source Moodle (tu tai, khong commit)
-├── moodledata/             # dataroot (khong commit)
-├── backup/                 # sql dump (khong commit)
+├── scripts/db-backup.sh    # backup thủ công
+├── scripts/db-restore.sh   # restore thủ công
+├── scripts/log-rotate.sh   # Ofelia gọi mỗi đêm
+├── moodle/                 # source Moodle (tự tải, không commit)
+├── moodledata/             # dataroot (không commit)
+├── backup/                 # sql dump (không commit)
 └── logs/caddy,moodle,php,mysql,redis
 ```
 
-## Chay nhanh
+## Chạy nhanh
 
 ```bash
-cp .env.example .env   # sua password
-# Giai nen source Moodle 5.x vao ./moodle (giua lai config.php neu co)
+cp .env.example .env   # sửa password trước
+# Giải nén source Moodle 5.x vào ./moodle (giữ lại config.php nếu có)
 docker compose up -d --build
 ```
 
-Mo `http://localhost`, cai dat web voi: DB host `db`,
+Mở `http://localhost`, cài đặt web với: DB host `db`,
 DB name/user/pass theo `.env`, data dir `/var/www/moodledata`.
-`config.php` dung `dbtype = 'mysqli'`. MySQL tu tao `MYSQL_USER`
-luc init volume lan dau.
+`config.php` dùng `dbtype = 'mysqli'`. MySQL tự tạo `MYSQL_USER`
+lúc init volume lần đầu.
 
-Bat Redis: Admin → Site administration → Plugins → Caching →
+Bật Redis: Admin → Site administration → Plugins → Caching →
 Add instance (Server `redis`, password theo `.env`) → map
 `Application` + `Session`.
 
@@ -55,33 +55,33 @@ Add instance (Server `redis`, password theo `.env`) → map
 
 ```bash
 bash scripts/db-backup.sh          # -> backup/moodle_*.sql + moodle_latest.sql
-bash scripts/db-restore.sh [file]  # mac dinh moodle_latest.sql
+bash scripts/db-restore.sh [file]  # mặc định moodle_latest.sql
 ```
 
-Ofelia tu dump `moodle_latest.sql` moi ngay.
+Ofelia tự dump `moodle_latest.sql` mỗi ngày.
 
 ## Logs
 
-Moi service ghi log rieng duoi `logs/`, xoay moi dem luc 0h VN,
-giu 30 ngay (Caddy dang JSON de parse). General log MySQL ton
-disk — xoa 2 dong `general` trong `docker-compose.yml` neu khong
-can audit query.
+Mỗi service ghi log riêng dưới `logs/`, xoay mỗi đêm lúc 0h VN,
+giữ 30 ngày (Caddy dạng JSON để parse). General log MySQL tốn
+disk — xóa 2 dòng `general` trong `docker-compose.yml` nếu không
+cần audit query.
 
-## Len domain
+## Lên domain
 
-1. `Caddyfile`: doi `:80` thanh domain
-2. `docker compose up -d` (port 443 mo san, cert luu o volume)
-3. Replace URL cu sang domain + purge caches (xem Moodle docs
-   `admin/tool/replace/cli`), bat `$CFG->sslproxy` neu sau proxy.
+1. `Caddyfile`: đổi `:80` thành domain
+2. `docker compose up -d` (port 443 mở sẵn, cert lưu ở volume)
+3. Replace URL cũ sang domain + purge caches (xem Moodle docs
+   `admin/tool/replace/cli`), bật `$CFG->sslproxy` nếu sau proxy.
 
-## Quyen
+## Quyền
 
-`setup` + `entrypoint.sh` tu mo 777 `moodle/ moodledata/ logs/
-backup/` nen user host va `www-data` deu ghi duoc 2 chieu,
-khong can `chown` tay. Them default ACL (hieu luc tren ext4/xfs)
-cho file tao moi luc runtime.
+`setup` + `entrypoint.sh` tự mở 777 `moodle/ moodledata/ logs/
+backup/` nên user host và `www-data` đều ghi được 2 chiều,
+không cần `chown` tay. Thêm default ACL (hiệu lực trên ext4/xfs)
+cho file tạo mới lúc runtime.
 
 ## License
 
 PolyForm Noncommercial 1.0.0 — xem `LICENSE-EE.md`.
-Chi dung cho muc dich phi thuong mai.
+Chỉ dùng cho mục đích phi thương mại.
