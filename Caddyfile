@@ -1,5 +1,11 @@
 # Dev: :80 | Prod: doi :80 thanh domain (Caddy tu cap SSL)
 :80 {
+	# HSTS chi gui khi HTTPS (len domain), khong tac dung tren HTTP
+	@https {
+		protocol https
+	}
+	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
 	handle {
 		header {
 			Server "TVC-LMS-Cloud"
