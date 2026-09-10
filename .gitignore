@@ -1,0 +1,21 @@
+# SECRET
+.env
+.env.*
+
+# SOURCE + DATA (nang, khong commit)
+moodle/
+moodledata/
+backup/
+logs/
+
+# DOCS (huong dan noi bo, khong commit)
+docs/
+
+# BACKUP
+*.sql
+*.tar.gz
+*.zip
+
+# SYSTEM
+.DS_Store
+Thumbs.db

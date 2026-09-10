@@ -1,0 +1,31 @@
+# Dev: :80 | Prod: doi :80 thanh domain (Caddy tu cap SSL)
+:80 {
+	handle {
+		header {
+			Server "TVC-LMS-Cloud"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "SAMEORIGIN"
+			Permissions-Policy "unload=*"
+			Content-Security-Policy "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: http: https:; img-src 'self' data: blob: http: https: *; media-src 'self' blob: data: http: https: *.youtube.com *.google.com *.vimeo.com *; frame-src 'self' http: https: *.youtube.com *.google.com *.vimeo.com *; font-src 'self' data: http: https: *; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: http: https: *; style-src 'self' 'unsafe-inline' http: https: *; connect-src 'self' blob: data: http: https: *; frame-ancestors 'self' http: https: *; base-uri 'self'; form-action 'self' http: https: *;"
+		}
+
+		request_body {
+			max_size 200MB
+		}
+
+		reverse_proxy moodle_web:80 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Port {server_port}
+		}
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100mb
+			roll_keep 30
+			roll_keep_for 720h
+		}
+		format json
+	}
+}

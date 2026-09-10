@@ -1,0 +1,15 @@
+.git
+.github
+logs
+backup
+moodledata
+moodle
+docs
+scripts
+*.sql
+*.tar.gz
+*.zip
+.env
+.env.*
+node_modules
+vendor

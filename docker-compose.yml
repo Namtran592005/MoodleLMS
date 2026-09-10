@@ -1,0 +1,152 @@
+services:
+  # Chay 1 lan moi lan up: tao thu muc log con thieu + mo quyen ghi
+  # (backup/, moodledata/ tao tay truoc khi trien khai)
+  setup:
+    image: alpine:latest
+    container_name: moodle_setup
+    volumes:
+      - ./logs:/logs
+      - ./backup:/backup
+      - ./moodledata:/moodledata
+    command: sh -c "mkdir -p /logs/moodle /logs/mysql /logs/redis && chmod -R 777 /logs /backup /moodledata && echo 'setup ok'"
+
+  caddy:
+    image: caddy:alpine
+    container_name: moodle_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./logs/caddy:/var/log/caddy
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - moodle_net
+    depends_on:
+      - moodle
+
+  db:
+    image: mysql:9
+    container_name: moodle_db
+    restart: always
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-allowed-packet=128M
+      - --innodb-file-per-table=1
+      # Log day du de audit (general log ton disk, xoa 2 dong general neu khong can)
+      - --log-error=/var/log/mysql/error.log
+      - --slow-query-log=1
+      - --slow-query-log-file=/var/log/mysql/slow.log
+      - --long-query-time=2
+      - --general-log=1
+      - --general-log-file=/var/log/mysql/general.log
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MOODLE_DB_NAME}
+      MYSQL_USER: ${MOODLE_DB_USER}
+      MYSQL_PASSWORD: ${MOODLE_DB_PASSWORD}
+    volumes:
+      - moodle_db_data:/var/lib/mysql
+      - ./backup:/backup
+      - ./logs/mysql:/var/log/mysql
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    networks:
+      - moodle_net
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.db-backup.schedule=@daily"
+      - "ofelia.job-exec.db-backup.command=bash -c 'mysqldump -u root -p\"$$MYSQL_ROOT_PASSWORD\" --default-character-set=utf8mb4 --single-transaction --quick $$MYSQL_DATABASE > /backup/moodle_latest.sql'"
+
+  redis:
+    image: redis:latest
+    container_name: moodle_redis
+    restart: always
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --logfile /var/log/redis/redis.log
+    volumes:
+      - ./logs/redis:/var/log/redis
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    networks:
+      - moodle_net
+
+  moodle:
+    build: ./php
+    container_name: moodle_web
+    restart: always
+    expose:
+      - "80"
+    volumes:
+      - ./moodle:/var/www/html
+      - ./moodledata:/var/www/moodledata
+      - ./logs/php:/var/log/php
+      - ./logs/moodle:/var/log/moodle
+      - ./logs:/logs
+      - ./scripts/log-rotate.sh:/usr/local/bin/log-rotate.sh:ro
+    environment:
+      MOODLE_DB_HOST: db
+      MOODLE_DB_NAME: ${MOODLE_DB_NAME}
+      MOODLE_DB_USER: ${MOODLE_DB_USER}
+      MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      setup:
+        condition: service_completed_successfully
+    networks:
+      - moodle_net
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.moodle-cron.schedule=@every 1m"
+      - "ofelia.job-exec.moodle-cron.command=php /var/www/html/admin/cli/cron.php"
+      # 17h UTC = 0h VN: xoay log moi ngay, giu 30 ngay
+      - "ofelia.job-exec.logs-rotate.schedule=0 17 * * *"
+      - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
+
+  cron:
+    image: mcuadros/ofelia:latest
+    container_name: moodle_cron_scheduler
+    restart: always
+    depends_on:
+      - moodle
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - moodle_net
+
+  # phpMyAdmin (debug only, uncomment when needed)
+  # phpmyadmin:
+  #   image: phpmyadmin:latest
+  #   container_name: moodle_pma
+  #   ports:
+  #     - "127.0.0.1:8080:80"
+  #   environment:
+  #     - PMA_HOST=db
+  #   networks:
+  #     - moodle_net
+
+  # Production HTTPS: doi :80 trong Caddyfile thanh domain roi up -d
+
+volumes:
+  moodle_db_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  moodle_net:
+    driver: bridge
