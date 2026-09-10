@@ -81,6 +81,37 @@ backup/` nên user host và `www-data` đều ghi được 2 chiều,
 không cần `chown` tay. Thêm default ACL (hiệu lực trên ext4/xfs)
 cho file tạo mới lúc runtime.
 
+## Bảo mật VPS (Ubuntu/Debian)
+
+Chạy 1 lần trên VPS **trước khi** deploy. Đảm bảo SSH key đã login
+được rồi mới tắt password (kẻo tự khóa mình).
+
+```bash
+# 1. User deploy co quyen docker (khoi sudo moi lenh)
+sudo usermod -aG docker $USER && newgrp docker
+
+# 2. Firewall: chi mo SSH/HTTP/HTTPS
+sudo apt update && sudo apt install -y ufw fail2ban unattended-upgrades
+sudo ufw allow 22/tcp && sudo ufw allow 80,443/tcp
+sudo ufw --force enable && sudo ufw status
+
+# 3. SSH chi cho key, cam password + root
+sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+sudo sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
+sudo systemctl restart ssh
+
+# 4. Chong brute-force SSH + tu va bao mat
+sudo systemctl enable --now fail2ban
+sudo systemctl enable apt-daily-upgrade.timer  # Ubuntu tu bat san
+
+# 5. Khoa file secrets
+chmod 600 .env
+```
+
+Định kỳ: `sudo apt update && sudo apt upgrade` + reboot khi lên
+kernel mới. Backup `backup/` ra ngoài VPS mỗi đêm (rsync/rclone) —
+mất VPS là mất hết nếu chỉ lưu local.
+
 ## License
 
 PolyForm Noncommercial 1.0.0 — xem `LICENSE-EE.md`.
