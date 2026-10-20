@@ -1,19 +1,21 @@
-services:
-  # Chay 1 lan moi lan up: tao thu muc log con thieu + mo quyen ghi
-  # (backup/, moodledata/ tao tay truoc khi trien khai)
-  setup:
-    image: alpine:latest
-    container_name: moodle_setup
-    volumes:
-      - ./logs:/logs
-      - ./backup:/backup
-      - ./moodledata:/moodledata
-    command: sh -c "mkdir -p /logs/moodle /logs/mysql /logs/redis && chmod -R 777 /logs /backup /moodledata && echo 'setup ok'"
+# Khong con service "setup" (alpine): moi container tu tao thu muc log
+# + mo quyen ngay trong entrypoint cua no. Nho vay `docker system prune -a`
+# khong xoa mat buoc khoi tao, va bot duoc 1 image (alpine).
 
+# Gioi han log cua Docker engine (json-file) de khong phinh disk.
+# Log "that" van nam trong logs/ (xem ben duoi).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
   caddy:
     image: caddy:alpine
     container_name: moodle_caddy
     restart: always
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"
@@ -32,18 +34,23 @@ services:
     image: mysql:9
     container_name: moodle_db
     restart: always
+    logging: *default-logging
+    # Entrypoint goc cua image can chay bang root de chmod thu muc log,
+    # sau do moi exec lai docker-entrypoint.sh -> mysqld (drop xuong user mysql).
+    entrypoint: ["/bin/sh", "-c"]
     command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --max-allowed-packet=128M
-      - --innodb-file-per-table=1
-      # Log day du de audit (general log ton disk, xoa 2 dong general neu khong can)
-      - --log-error=/var/log/mysql/error.log
-      - --slow-query-log=1
-      - --slow-query-log-file=/var/log/mysql/slow.log
-      - --long-query-time=2
-      - --general-log=1
-      - --general-log-file=/var/log/mysql/general.log
+      - |
+        set -e
+        mkdir -p /var/log/mysql /backup
+        chmod 777 /var/log/mysql /backup
+        exec docker-entrypoint.sh mysqld \
+          --character-set-server=utf8mb4 \
+          --collation-server=utf8mb4_unicode_ci \
+          --max-allowed-packet=128M \
+          --innodb-file-per-table=1 \
+          --log-error=/var/log/mysql/error.log
+        # Chi ghi log loi. Can debug query cham thi them vao cuoi dong tren:
+        #   --slow-query-log=1 --slow-query-log-file=/var/log/mysql/slow.log --long-query-time=2
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MOODLE_DB_NAME}
@@ -53,9 +60,6 @@ services:
       - moodle_db_data:/var/lib/mysql
       - ./backup:/backup
       - ./logs/mysql:/var/log/mysql
-    depends_on:
-      setup:
-        condition: service_completed_successfully
     networks:
       - moodle_net
     labels:
@@ -67,18 +71,21 @@ services:
     image: redis:latest
     container_name: moodle_redis
     restart: always
-    command: >
-      redis-server
-      --requirepass ${REDIS_PASSWORD}
-      --appendonly yes
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --logfile /var/log/redis/redis.log
+    logging: *default-logging
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /var/log/redis
+        chmod 777 /var/log/redis
+        exec docker-entrypoint.sh redis-server \
+          --requirepass "${REDIS_PASSWORD}" \
+          --appendonly yes \
+          --maxmemory 256mb \
+          --maxmemory-policy allkeys-lru \
+          --logfile /var/log/redis/redis.log
     volumes:
       - ./logs/redis:/var/log/redis
-    depends_on:
-      setup:
-        condition: service_completed_successfully
     networks:
       - moodle_net
 
@@ -86,6 +93,7 @@ services:
     build: ./php
     container_name: moodle_web
     restart: always
+    logging: *default-logging
     expose:
       - "80"
     volumes:
@@ -105,8 +113,6 @@ services:
         condition: service_started
       redis:
         condition: service_started
-      setup:
-        condition: service_completed_successfully
     networks:
       - moodle_net
     labels:
@@ -121,6 +127,7 @@ services:
     image: mcuadros/ofelia:latest
     container_name: moodle_cron_scheduler
     restart: always
+    logging: *default-logging
     depends_on:
       - moodle
     command: daemon --docker

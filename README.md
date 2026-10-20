@@ -15,12 +15,15 @@ backup SQL, log, file `.env` và docs nội bộ không commit
 
 | Service | Image | Vai trò |
 |---|---|---|
-| `setup` | `alpine` | Chạy 1 lần: tạo thư mục + chmod 777 bind mounts |
 | `caddy` | `caddy:alpine` | Reverse proxy 80/443/udp, SSL Let's Encrypt tự động |
-| `db` | `mysql:9` | MySQL 9 LTS, utf8mb4, log error/slow/general |
+| `db` | `mysql:9` | MySQL 9 LTS, utf8mb4, chỉ log lỗi (tiết kiệm disk) |
 | `redis` | `redis` | Cache + session, 256MB LRU |
 | `moodle` | build `./php` | Apache + PHP 8.4, DocumentRoot `/public` |
 | `cron` | `ofelia` | Cron Moodle 1 phút + backup DB daily + xoay log 0h VN |
+
+Không có service init riêng (không dùng `alpine`): mỗi container tự tạo
+thư mục log + `chmod 777` trong entrypoint của nó, nên `docker system
+prune -a` không phá được bước khởi tạo. Stack chỉ cần **5 image**.
 
 ## Cấu trúc
 
@@ -67,9 +70,29 @@ Ofelia tự dump `moodle_latest.sql` mỗi ngày.
 ## Logs
 
 Mỗi service ghi log riêng dưới `logs/`, xoay mỗi đêm lúc 0h VN,
-giữ 30 ngày (Caddy dạng JSON để parse). General log MySQL tốn
-disk — xóa 2 dòng `general` trong `docker-compose.yml` nếu không
-cần audit query.
+giữ 30 ngày (Caddy dạng JSON để parse). MySQL chỉ bật `--log-error`
+(không bật `general-log`/`slow-log` vì rất tốn disk; muốn debug query
+chậm thì thêm 3 flag slow-log vào `command:` của service `db`).
+Log của Docker engine cũng bị chặn trần `10MB × 3` mỗi container
+(anchor `x-logging`).
+
+## Dọn dẹp Docker
+
+```bash
+docker system prune -a   # an toàn: chỉ xóa image/container không dùng
+docker compose down      # dừng stack, giữ volume DB
+```
+
+`docker compose down -v` và `docker system prune -a --volumes` sẽ
+**xóa volume `moodle_db_data`** (mất DB) — chỉ chạy khi đã có backup
+và muốn làm lại từ đầu.
+
+## Quyền
+
+`entrypoint.sh` (container moodle) + entrypoint wrapper của `db`/`redis`
+tự mở 777 `moodle/ moodledata/ logs/ backup/` nên user host và
+`www-data` đều ghi được 2 chiều, không cần `chown` tay. Thêm default
+ACL (hiệu lực trên ext4/xfs) cho file tạo mới lúc runtime.
 
 ## Lên domain
 
@@ -77,13 +100,6 @@ cần audit query.
 2. `docker compose up -d` (port 443 mở sẵn, cert lưu ở volume)
 3. Replace URL cũ sang domain + purge caches (xem Moodle docs
    `admin/tool/replace/cli`), bật `$CFG->sslproxy` nếu sau proxy.
-
-## Quyền
-
-`setup` + `entrypoint.sh` tự mở 777 `moodle/ moodledata/ logs/
-backup/` nên user host và `www-data` đều ghi được 2 chiều,
-không cần `chown` tay. Thêm default ACL (hiệu lực trên ext4/xfs)
-cho file tạo mới lúc runtime.
 
 ## Bảo mật VPS (Ubuntu/Debian)
 

@@ -21,8 +21,6 @@ rotate() {
 rotate /logs/caddy/access.log
 rotate /logs/php/error.log
 rotate /logs/mysql/error.log
-rotate /logs/mysql/slow.log
-rotate /logs/mysql/general.log
 rotate /logs/redis/redis.log
 
 find /logs -name '*-*.log' -mtime +30 -delete

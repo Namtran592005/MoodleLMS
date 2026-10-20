@@ -4,6 +4,10 @@ set -e
 # Cho phep ghi tu do, tranh loi permission tren Windows/WSL/Linux
 echo "Setting permissions (777)..."
 mkdir -p /var/www/moodledata /var/log/moodle /var/log/php
+# logs/ la mount cha cua logs/caddy, logs/mysql, logs/redis: dam bao
+# ca cay log mo quyen ghi (khong can service setup rieng nua)
+mkdir -p /logs/caddy /logs/mysql /logs/redis
+chmod -R 777 /logs
 chown -R www-data:www-data /var/www/html /var/www/moodledata /var/log/moodle /var/log/php || true
 chmod -R 777 /var/www/html /var/www/moodledata
 chmod -R 777 /var/log/moodle /var/log/php
