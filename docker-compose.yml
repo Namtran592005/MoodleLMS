@@ -1,0 +1,207 @@
+# Khong con service "setup" (alpine): moi container tu tao thu muc log
+# + set owner ngay trong entrypoint cua no. Nho vay `docker system prune -a`
+# khong xoa mat buoc khoi tao, va bot duoc 1 image (alpine).
+# Quyen: www-data duoc build voi UID/GID = PUID/PGID cua user host,
+# khong dung chmod 777.
+
+# Gioi han log cua Docker engine (json-file) de khong phinh disk.
+# Log "that" van nam trong logs/ (xem ben duoi).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  caddy:
+    image: caddy:alpine
+    container_name: moodle_caddy
+    restart: always
+    logging: *default-logging
+    # Tao san access.log mode 644 (Caddy mac dinh tao file 600 -> user host
+    # khong doc duoc). File da ton tai thi Caddy chi append, giu nguyen mode.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /var/log/caddy
+        touch /var/log/caddy/access.log
+        chmod 644 /var/log/caddy/access.log
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./logs/caddy:/var/log/caddy
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - moodle_net
+    depends_on:
+      - moodle
+
+  db:
+    image: mysql:9
+    container_name: moodle_db
+    restart: always
+    logging: *default-logging
+    # Wrapper phai chay bang root de sua owner truoc khi mysqld drop xuong
+    # user mysql (uid 999).
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /var/log/mysql
+        # -R + chi doi OWNER (khong doi group): file log cu do root tao cung duoc
+        # chuyen cho mysql, con group giu nguyen de ban van doc duoc log.
+        chown -R mysql /var/log/mysql 2>/dev/null || true
+        chmod 2770 /var/log/mysql 2>/dev/null || true
+        chmod 0775 /backup 2>/dev/null || true
+        # Khong ghi duoc file log (filesystem la) -> chay khong --log-error,
+        # log ra stdout (docker logs, da chan 10MB x 3).
+        LOGOPT="--log-error=/var/log/mysql/error.log"
+        if ! gosu mysql sh -c 'touch /var/log/mysql/.wtest' 2>/dev/null; then
+          echo "[db] CANH BAO: khong ghi duoc /var/log/mysql -> log ra stdout" >&2
+          LOGOPT=""
+        fi
+        rm -f /var/log/mysql/.wtest 2>/dev/null || true
+        exec docker-entrypoint.sh mysqld \
+          --character-set-server=utf8mb4 \
+          --collation-server=utf8mb4_unicode_ci \
+          --max-allowed-packet=128M \
+          --innodb-file-per-table=1 \
+          $$LOGOPT
+        # Chi ghi log loi. Can debug query cham thi them vao cuoi dong tren:
+        #   --slow-query-log=1 --slow-query-log-file=/var/log/mysql/slow.log --long-query-time=2
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MOODLE_DB_NAME}
+      MYSQL_USER: ${MOODLE_DB_USER}
+      MYSQL_PASSWORD: ${MOODLE_DB_PASSWORD}
+    volumes:
+      - moodle_db_data:/var/lib/mysql
+      - ./backup:/backup
+      - ./logs/mysql:/var/log/mysql
+    networks:
+      - moodle_net
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.db-backup.schedule=@daily"
+      - "ofelia.job-exec.db-backup.command=bash -c 'mysqldump -u root -p\"$$MYSQL_ROOT_PASSWORD\" --default-character-set=utf8mb4 --single-transaction --quick $$MYSQL_DATABASE > /backup/moodle_latest.sql'"
+
+  redis:
+    image: redis:latest
+    container_name: moodle_redis
+    restart: always
+    logging: *default-logging
+    # Nhu db: wrapper chay root de sua owner file log cu truoc khi redis-server
+    # drop xuong user redis (uid 999).
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /var/log/redis
+        # Nhu db: doi owner (ke ca file log cu), giu group cua user host.
+        chown -R redis /var/log/redis 2>/dev/null || true
+        chmod 2770 /var/log/redis 2>/dev/null || true
+        LOGOPT="--logfile /var/log/redis/redis.log"
+        if ! setpriv --reuid redis --regid redis --clear-groups touch /var/log/redis/.wtest 2>/dev/null; then
+          echo "[redis] CANH BAO: khong ghi duoc /var/log/redis -> log ra stdout" >&2
+          LOGOPT=""
+        fi
+        rm -f /var/log/redis/.wtest 2>/dev/null || true
+        exec docker-entrypoint.sh redis-server \
+          --requirepass "${REDIS_PASSWORD}" \
+          --appendonly yes \
+          --maxmemory 256mb \
+          --maxmemory-policy allkeys-lru \
+          $$LOGOPT
+    environment:
+      # Co san trong container de chan doan bang redis-cli ma khong phai
+      # doc .env tren host (file .env co the thuoc user khac).
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - ./logs/redis:/var/log/redis
+    networks:
+      - moodle_net
+
+  moodle:
+    build:
+      context: ./php
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    container_name: moodle_web
+    restart: always
+    logging: *default-logging
+    expose:
+      - "80"
+    volumes:
+      - ./moodle:/var/www/html
+      - ./moodledata:/var/www/moodledata
+      - ./backup:/backup
+      - ./logs/php:/var/log/php
+      - ./logs/moodle:/var/log/moodle
+      - ./logs:/logs
+      - ./scripts/log-rotate.sh:/usr/local/bin/log-rotate.sh:ro
+    environment:
+      # De trong = tu dong do owner cua moodle/ hoac moodledata/
+      PUID: ${PUID:-}
+      PGID: ${PGID:-}
+      MOODLE_DB_HOST: db
+      MOODLE_DB_NAME: ${MOODLE_DB_NAME}
+      MOODLE_DB_USER: ${MOODLE_DB_USER}
+      MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+    networks:
+      - moodle_net
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.moodle-cron.schedule=@every 1m"
+      - "ofelia.job-exec.moodle-cron.command=setpriv --reuid www-data --regid www-data --init-groups php /var/www/html/admin/cli/cron.php"
+      # 17h UTC = 0h VN: xoay log moi ngay, giu 30 ngay
+      - "ofelia.job-exec.logs-rotate.schedule=0 17 * * *"
+      - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
+
+  cron:
+    image: mcuadros/ofelia:latest
+    container_name: moodle_cron_scheduler
+    restart: always
+    logging: *default-logging
+    depends_on:
+      - moodle
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - moodle_net
+
+  # phpMyAdmin (debug only, uncomment when needed)
+  # phpmyadmin:
+  #   image: phpmyadmin:latest
+  #   container_name: moodle_pma
+  #   ports:
+  #     - "127.0.0.1:8080:80"
+  #   environment:
+  #     - PMA_HOST=db
+  #   networks:
+  #     - moodle_net
+
+  # Production HTTPS: doi :80 trong Caddyfile thanh domain roi up -d
+
+volumes:
+  moodle_db_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  moodle_net:
+    driver: bridge

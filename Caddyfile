@@ -1,0 +1,43 @@
+# Dev: :80 | Prod: doi :80 thanh domain (Caddy tu cap SSL)
+:80 {
+	# HSTS chi gui khi HTTPS (len domain), khong tac dung tren HTTP
+	@https {
+		protocol https
+	}
+	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	handle {
+		header {
+			Server "TVC-LMS-Cloud"
+			X-Content-Type-Options "nosniff"
+			# X-Frame-Options do Moodle tu gui (tranh trung header)
+			Permissions-Policy "unload=*"
+			# CSP: chat nhung du cho Moodle (unsafe-inline/eval la bat buoc
+			# cho YUI + inline JS/CSS cua Moodle, khong bo duoc)
+			Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob: data: *.youtube.com *.google.com *.vimeo.com; frame-src 'self' *.youtube.com *.google.com *.vimeo.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' blob: data:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
+		}
+
+		request_body {
+			max_size 200MB
+		}
+
+		# Retry backend toi 30s (Apache start cham sau restart) thay vi 502 ngay
+		reverse_proxy moodle_web:80 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Port {server_port}
+			header_down -Server
+			lb_try_duration 30s
+			lb_try_interval 500ms
+		}
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100mb
+			roll_keep 30
+			roll_keep_for 720h
+		}
+		format json
+	}
+}
