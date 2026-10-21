@@ -12,6 +12,12 @@ services:
     container_name: moodle_caddy
     restart: always
     logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     # access.log mode 644 (Caddy mac dinh 600) de user host doc duoc
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -33,13 +39,20 @@ services:
     networks:
       - moodle_net
     depends_on:
-      - moodle
+      moodle:
+        condition: service_healthy
 
   db:
     image: mysql:9
     container_name: moodle_db
     restart: always
     logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent 2>/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     # root de sua owner log truoc khi mysqld drop xuong user mysql
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
@@ -84,6 +97,12 @@ services:
     container_name: moodle_redis
     restart: always
     logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -120,6 +139,12 @@ services:
     container_name: moodle_web
     restart: always
     logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1/login/index.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
     expose:
       - "80"
     volumes:
@@ -140,9 +165,9 @@ services:
       MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     networks:
       - moodle_net
     labels:
@@ -158,8 +183,15 @@ services:
     container_name: moodle_cron_scheduler
     restart: always
     logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pidof ofelia >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
-      - moodle
+      moodle:
+        condition: service_healthy
     command: daemon --docker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
