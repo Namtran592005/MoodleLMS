@@ -13,7 +13,7 @@ Kho mã nguồn chỉ chứa khung cấu hình. Mã nguồn Moodle, `moodledata/
 
 | Dịch vụ | Image | Vai trò | Cổng |
 |---|---|---|---|
-| `caddy` | `caddy:alpine` | Reverse proxy, TLS tự động, header bảo mật | 80, 443, 443/udp |
+| `caddy` | build `./caddy` | Reverse proxy (Caddy 2.11.7 + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
 | `db` | `mysql:9` | Cơ sở dữ liệu MySQL 9 LTS, `utf8mb4` | nội bộ 3306 |
 | `redis` | `redis:latest` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
 | `moodle` | build `./php` | Apache 2.4, PHP 8.4, DocumentRoot `/public` | nội bộ 80 |
@@ -101,7 +101,7 @@ $CFG->dbtype    = 'mysqli';
 $CFG->dbhost    = 'db';
 $CFG->dbname    = 'moodle';
 $CFG->dbuser    = 'moodle_user';
-$CFG->dbpass    = '<mật khẩu trong .env>';
+$CFG->dbpass    = getenv('MOODLE_DB_PASSWORD');
 $CFG->wwwroot   = 'http://localhost';
 $CFG->dataroot  = '/var/www/moodledata';
 $CFG->directorypermissions = 0755;
@@ -110,12 +110,13 @@ $CFG->directorypermissions = 0755;
 ### 3. Tải image và khởi động
 
 ```bash
-docker compose pull
+docker compose pull db redis cron
 docker compose up -d --build
 ```
 
-`docker compose pull` tải bốn image nền. Dịch vụ `moodle` được build từ
-`./php` nên không có image để tải.
+`docker compose pull db redis cron` tải ba image nền (`mysql:9`, `redis:latest`,
+`mcuadros/ofelia:latest`). Hai dịch vụ `moodle` và `caddy` được build từ `./php`
+và `./caddy`.
 
 Lần khởi động đầu tiên thực hiện tuần tự: tạo volume và mạng, khởi tạo MySQL,
 khởi động Redis, build image PHP, chuẩn hóa quyền, chạy `composer install` nếu
@@ -235,8 +236,8 @@ docker system prune -a
 ```
 
 Lệnh này xóa image không dùng và container đã dừng, không ảnh hưởng volume dữ
-liệu. Sau khi dọn, chạy `docker compose pull` và `docker compose up -d --build`
-để dựng lại.
+liệu. Sau khi dọn, chạy `docker compose pull db redis cron` và
+`docker compose up -d --build` để dựng lại.
 
 Hai lệnh sau xóa cả dữ liệu và chỉ được dùng khi đã có backup:
 
@@ -262,10 +263,21 @@ thay URL trong cơ sở dữ liệu và xóa cache. Quy trình đầy đủ nằ
 
 - Chỉ mở cổng 22, 80 và 443. MySQL và Redis không mở ra Internet.
 - Đăng nhập SSH bằng khóa, tắt xác thực mật khẩu và đăng nhập `root`.
-- `.env` có quyền `600`.
+- `.env` có quyền `600`; ba mật khẩu MySQL root, MySQL ứng dụng và Redis
+  phải khác nhau.
+- `moodle/config.php` đọc mật khẩu cơ sở dữ liệu từ biến môi trường
+  `MOODLE_DB_PASSWORD`, không lưu mật khẩu trong tệp.
 - Caddy gửi kèm `Strict-Transport-Security` khi dùng HTTPS,
-  `Content-Security-Policy`, `X-Content-Type-Options`, `Permissions-Policy` và
-  ẩn header `Server` của Apache.
+  `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Cross-Origin-Opener-Policy`, `Permissions-Policy` và ẩn header `Server`
+  của Apache. Apache bật `ServerTokens Prod` và `ServerSignature Off` nên
+  không lộ phiên bản trong header hoặc trang lỗi.
+- Caddy giới hạn 30 yêu cầu `POST` mỗi phút cho mỗi IP trên
+  `/login/index.php` và `/login/token.php`, bổ sung cho chính sách khóa tài
+  khoản của Moodle.
+- Apache chặn các tệp schema và thư mục kiểm thử nằm trong webroot
+  (`install.xml`, `environment.xml`, `*.schema.json`, `/lib/db/`,
+  `/lib/tests/`, `/lib/phpunit/`).
 - Bật cập nhật bảo mật tự động cho hệ điều hành và kiểm tra định kỳ.
 - Duy trì backup ngoài máy chủ và kiểm tra khả năng phục hồi.
 

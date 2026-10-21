@@ -14,7 +14,11 @@ x-logging: &default-logging
 
 services:
   caddy:
-    image: caddy:alpine
+    # Build tu ./caddy de co module rate_limit. Chay lai:
+    #   docker compose build caddy && docker compose up -d caddy
+    image: moodle-caddy:2.11.7
+    build:
+      context: ./caddy
     container_name: moodle_caddy
     restart: always
     logging: *default-logging

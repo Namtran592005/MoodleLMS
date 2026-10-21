@@ -104,6 +104,14 @@ RUN { \
     echo 'opcache.jit_buffer_size=100M'; \
     } > /usr/local/etc/php/conf.d/moodle-optimizations.ini
 
+# An phien ban Apache trong header va trang loi (mac dinh: Apache/2.4.x (Debian)).
+# Dong sau ghi de dong truoc trong cung file, nen chi can noi vao cuoi.
+RUN { \
+    echo 'ServerTokens Prod'; \
+    echo 'ServerSignature Off'; \
+    echo 'ServerName localhost'; \
+    } >> /etc/apache2/conf-available/security.conf
+
 COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

@@ -1,6 +1,7 @@
 # SECRET
 .env
 .env.*
+!.env.example
 
 # SOURCE + DATA (nang, khong commit)
 moodle/
