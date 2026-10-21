@@ -1,9 +1,6 @@
 FROM php:8.4-apache
 
-# UID/GID cua user Linux tren host (mac dinh 1000 = user dau tien cua
-# Ubuntu/Debian). Apache/PHP se chay bang chinh UID nay, nen file do Moodle
-# tao ra thuoc ve user SSH: sua/xoa/upload/plugin cai dat deu khong vuong
-# quyen, va KHONG can chmod 777.
+# www-data chay bang UID/GID cua user host, khong dung chmod 777
 ARG PUID=1000
 ARG PGID=1000
 
@@ -15,14 +12,11 @@ RUN apt-get update && apt-get install -y \
     git unzip ghostscript \
     && rm -rf /var/lib/apt/lists/*
 
-# Doi UID/GID cua www-data cho khop user host (van giu ten www-data
-# de Apache/config mac dinh khong phai sua)
 RUN set -eux; \
     groupmod -o -g "${PGID}" www-data; \
     usermod -o -u "${PUID}" -g "${PGID}" www-data; \
     id www-data
 
-# Locale for VI/KM support
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && echo "en_AU.UTF-8 UTF-8" >> /etc/locale.gen \
     && echo "vi_VN.UTF-8 UTF-8" >> /etc/locale.gen \
@@ -35,9 +29,7 @@ ENV LANG=en_US.UTF-8 \
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# phpredis: build tu GitHub thay vi pecl.php.net. pecl.php.net thuong xuyen
-# khong truy cap duoc (loi "No releases available for package"), lam hong
-# buoc build. Neu GitHub bi chan thi quay lai pecl.
+# build tu GitHub vi pecl.php.net hay loi; GitHub bi chan thi fallback pecl
 ARG PHPREDIS_VERSION=6.3.0
 
 RUN set -eux; \
@@ -62,7 +54,6 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
     gd mysqli opcache zip intl soap xsl mbstring exif bcmath sockets sodium
 
-# Apache serves Moodle 5.x from /public
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
     && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf \
@@ -77,11 +68,9 @@ RUN { \
     echo '</Directory>'; \
     } >> /etc/apache2/apache2.conf
 
-# Apache logs theo ngay (rotatelogs co san trong image)
 RUN sed -i 's#^[ \t]*ErrorLog .*#ErrorLog "|/usr/bin/rotatelogs /var/log/moodle/error-%Y-%m-%d.log 86400"#' /etc/apache2/sites-available/000-default.conf \
     && sed -i 's#^[ \t]*CustomLog .*#CustomLog "|/usr/bin/rotatelogs /var/log/moodle/access-%Y-%m-%d.log 86400" combined#' /etc/apache2/sites-available/000-default.conf
 
-# Production PHP: hide errors, optimize OPcache
 RUN { \
     echo 'expose_php=Off'; \
     echo 'display_errors=Off'; \
@@ -104,8 +93,7 @@ RUN { \
     echo 'opcache.jit_buffer_size=100M'; \
     } > /usr/local/etc/php/conf.d/moodle-optimizations.ini
 
-# An phien ban Apache trong header va trang loi (mac dinh: Apache/2.4.x (Debian)).
-# Dong sau ghi de dong truoc trong cung file, nen chi can noi vao cuoi.
+# an phien ban Apache trong header va trang loi
 RUN { \
     echo 'ServerTokens Prod'; \
     echo 'ServerSignature Off'; \

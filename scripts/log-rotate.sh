@@ -1,14 +1,10 @@
 #!/bin/sh
 set -e
-# Xoay log hang ngay, giu 30 ngay. Chay trong container moodle
-# qua Ofelia luc 0h VN (17h UTC). Copytruncate: an toan vi cac
-# service deu ghi append (caddy/php/mysql/redis).
-# Apache (rotatelogs) tu tao file theo ngay, chi can xoa cu.
 # Usage: sh scripts/log-rotate.sh
+# copytruncate: cac service deu ghi append nen an toan
 
 D=$(date +%F)
 
-# Mo log MySQL sinh ra voi quyen han che -> mo read de host doc duoc
 chmod -R a+r /logs 2>/dev/null || true
 
 rotate() {

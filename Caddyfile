@@ -1,6 +1,5 @@
-# Dev: :80 | Prod: doi :80 thanh domain (Caddy tu cap SSL)
+# Dev: :80 | Prod: doi thanh domain de Caddy tu cap SSL
 :80 {
-	# HSTS chi gui khi HTTPS (len domain), khong tac dung tren HTTP
 	@https {
 		protocol https
 	}
@@ -10,21 +9,16 @@
 		header {
 			Server "TVC-LMS-Cloud"
 			X-Content-Type-Options "nosniff"
-			# X-Frame-Options do Moodle tu gui (tranh trung header)
+			# X-Frame-Options do Moodle tu gui
 			Referrer-Policy "strict-origin-when-cross-origin"
 			Cross-Origin-Opener-Policy "same-origin"
 			Permissions-Policy "unload=*"
-			# Xoa Via do reverse_proxy tu them. Co dong - nay, toan bo
-			# khoi header duoc ap dung sau khi proxy tra response.
+			# -Via cung lam khoi header chay sau khi proxy tra response
 			-Via
-			# CSP: chat nhung du cho Moodle (unsafe-inline/eval la bat buoc
-			# cho YUI + inline JS/CSS cua Moodle, khong bo duoc)
 			Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob: data: *.youtube.com *.google.com *.vimeo.com; frame-src 'self' *.youtube.com *.google.com *.vimeo.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' blob: data:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
 		}
 
-		# Gioi han thu mat khau theo IP: toi da 30 POST moi phut cho
-		# /login/index.php va /login/token.php. Du rong cho mot lop hoc
-		# chung mot IP, van chan duoc brute-force toc do cao.
+		# 30 POST/phut/IP cho trang dang nhap
 		rate_limit {
 			zone login {
 				match {
@@ -42,12 +36,9 @@
 			max_size 200MB
 		}
 
-		# Retry backend toi 30s (Apache start cham sau restart) thay vi 502 ngay
 		reverse_proxy moodle_web:80 {
 			header_up Host {host}
 			header_up X-Real-IP {remote_host}
-			# Caddy tu gui X-Forwarded-For, X-Forwarded-Proto va
-			# X-Forwarded-Host; chi bo sung cong.
 			header_up X-Forwarded-Port {server_port}
 			header_down -Server
 			lb_try_duration 30s
@@ -55,8 +46,7 @@
 		}
 	}
 
-	# Loi do Caddy sinh ra (429 khi vuot rate-limit, 502 khi backend chua len):
-	# ap dung cung bo header va khong de lo ten phan mem proxy.
+	# Loi do Caddy sinh ra (429/502): cung header, khong lo ten proxy
 	handle_errors {
 		header {
 			Server "TVC-LMS-Cloud"

@@ -1,23 +1,18 @@
-# SECRET
 .env
 .env.*
 !.env.example
 
-# SOURCE + DATA (nang, khong commit)
 moodle/
 moodledata/
 backup/
 logs/
 
-# DOCS (huong dan noi bo, khong commit)
 docs/
 scripts/gen_docs.py
 
-# BACKUP
 *.sql
 *.tar.gz
 *.zip
 
-# SYSTEM
 .DS_Store
 Thumbs.db

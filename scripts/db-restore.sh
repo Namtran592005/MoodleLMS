@@ -1,10 +1,7 @@
 #!/bin/bash
 set -e
-# Restore DB tu file sql (mac dinh: backup/moodle_latest.sql)
 # Usage: bash scripts/db-restore.sh [path/to/file.sql]
-#
-# Khong doc .env tren host: lay thong tin ket noi tu environment cua container
-# moodle_db. Nho vay script chay duoc ca khi .env thuoc user khac.
+# Doc thong tin ket noi tu container, khong doc .env tren host
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

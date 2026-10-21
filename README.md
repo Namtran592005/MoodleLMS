@@ -13,7 +13,7 @@ Kho mã nguồn chỉ chứa khung cấu hình. Mã nguồn Moodle, `moodledata/
 
 | Dịch vụ | Image | Vai trò | Cổng |
 |---|---|---|---|
-| `caddy` | build `./caddy` | Reverse proxy (Caddy 2.11.7 + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
+| `caddy` | build `./caddy` | Reverse proxy (Caddy latest + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
 | `db` | `mysql:9` | Cơ sở dữ liệu MySQL 9 LTS, `utf8mb4` | nội bộ 3306 |
 | `redis` | `redis:latest` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
 | `moodle` | build `./php` | Apache 2.4, PHP 8.4, DocumentRoot `/public` | nội bộ 80 |
@@ -116,7 +116,8 @@ docker compose up -d --build
 
 `docker compose pull db redis cron` tải ba image nền (`mysql:9`, `redis:latest`,
 `mcuadros/ofelia:latest`). Hai dịch vụ `moodle` và `caddy` được build từ `./php`
-và `./caddy`.
+và `./caddy`. Caddy dùng base tag `latest` và được build lại để thêm module
+rate-limit, nên mỗi lần build sẽ lấy bản Caddy mới nhất.
 
 Lần khởi động đầu tiên thực hiện tuần tự: tạo volume và mạng, khởi tạo MySQL,
 khởi động Redis, build image PHP, chuẩn hóa quyền, chạy `composer install` nếu

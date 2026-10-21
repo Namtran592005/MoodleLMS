@@ -1,11 +1,7 @@
 #!/bin/bash
 set -e
-# Backup DB -> backup/moodle_YYYY-MM-DD_HH-MM.sql + moodle_latest.sql
 # Usage: bash scripts/db-backup.sh
-#
-# Khong doc .env tren host: lay MYSQL_ROOT_PASSWORD va MYSQL_DATABASE tu
-# environment cua container moodle_db. Nho vay script chay duoc ca khi .env
-# thuoc user khac hoac co quyen 600.
+# Doc bien moi truong tu container, khong doc .env tren host
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
