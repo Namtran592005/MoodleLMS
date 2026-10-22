@@ -187,6 +187,17 @@ bằng đúng UID của Moodle:
 docker exec -it -u www-data moodle_web bash
 ```
 
+Không chạy các lệnh `php admin/cli/...` bằng `root`, vì Moodle có thể tạo thư
+mục cache thuộc `root` và gây lỗi ghi cho Apache/PHP. Dùng `-u www-data` hoặc
+`setpriv`:
+
+```bash
+docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
+```
+
+Nếu đã lỡ tạo tệp bằng `root`, chuẩn hóa lại quyền bằng
+`bash scripts/fix-perms.sh`.
+
 ## Vận hành
 
 ### Backup và phục hồi
@@ -225,6 +236,26 @@ số vào `command:` của dịch vụ `db`:
 Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản triển khai,
 nên tệp cache và session do cron tạo không gây lỗi quyền cho các tiến trình
 khác.
+
+### Vá lỗi JS usermenu
+
+Moodle 5.3 có lỗi JS trên trang chưa đăng nhập: `.usermenu` không có
+`.dropdown-menu`, nhưng khi resize, `initTruncationTooltips()` vẫn đọc
+`classList` của phần tử `null` và báo `TypeError` trong console. Lỗi không
+chặn đăng nhập nhưng gây nhiễu log trình duyệt.
+
+Repo không chứa source Moodle, nên dùng script để vá lại sau khi cài hoặc nâng
+cấp Moodle:
+
+```bash
+bash scripts/patch-usermenu.sh
+docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
+```
+
+Script vá cả source `lib/amd/src/usermenu.js` và bản build
+`lib/amd/build/usermenu.min.js`, lưu bản gốc vào `backup/usermenu-patch/`.
+Nếu Moodle đã sửa lỗi hoặc đổi mã, script dừng mà không ghi đè. Sau khi vá,
+hard refresh trình duyệt một lần để bỏ JS cũ trong cache.
 
 ### Lệnh thường dùng
 
