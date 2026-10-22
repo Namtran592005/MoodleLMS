@@ -1,4 +1,4 @@
-FROM php:8.4-apache
+FROM php:8.5-apache
 
 # www-data chay bang UID/GID cua user host, khong dung chmod 777
 ARG PUID=1000
@@ -50,9 +50,11 @@ RUN set -eux; \
     fi; \
     docker-php-ext-enable redis
 
+# PHP 8.5 da tich hop san OPcache va sodium trong base image.
+# Neu dua vao docker-php-ext-install se loi cp: cannot stat 'modules/*'.
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
-    gd mysqli opcache zip intl soap xsl mbstring exif bcmath sockets sodium
+    gd mysqli zip intl soap xsl mbstring exif bcmath sockets
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \

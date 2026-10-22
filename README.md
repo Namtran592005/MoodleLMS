@@ -16,7 +16,7 @@ Kho mã nguồn chỉ chứa khung cấu hình. Mã nguồn Moodle, `moodledata/
 | `caddy` | build `./caddy` | Reverse proxy (Caddy latest + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
 | `db` | `mysql:9` | Cơ sở dữ liệu MySQL 9 LTS, `utf8mb4` | nội bộ 3306 |
 | `redis` | `redis:latest` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
-| `moodle` | build `./php` | Apache 2.4, PHP 8.4, DocumentRoot `/public` | nội bộ 80 |
+| `moodle` | build `./php` | Apache 2.4, PHP 8.5, DocumentRoot `/public` | nội bộ 80 |
 | `cron` | `mcuadros/ofelia` | Cron Moodle, backup hằng ngày, xoay log | không mở |
 
 Chỉ `caddy` mở cổng ra ngoài. Các dịch vụ còn lại chỉ truy cập được trong mạng
@@ -27,6 +27,12 @@ Chỉ `caddy` mở cổng ra ngoài. Các dịch vụ còn lại chỉ truy cậ
 Yêu cầu từ trình duyệt được Caddy tiếp nhận qua HTTPS và chuyển tiếp tới
 Apache/PHP trong `moodle_web`. PHP đọc ghi thư mục `moodledata`, truy vấn MySQL
 và Redis, sau đó trả kết quả về Caddy.
+
+PHP 8.5 xử lý mỗi yêu cầu trong một tiến trình. Đa nhân được tận dụng bằng nhiều
+tiến trình Apache `mpm_prefork`; entrypoint tự tính `MaxRequestWorkers` theo CPU
+và RAM, khoảng 32 worker cho 4 GB/2 vCPU và 64 worker cho 8 GB/4 vCPU. Có thể
+ghi đè bằng `APACHE_MAX_REQUEST_WORKERS` trong `.env`. Quá trình build cũng dùng
+`-j$(nproc)` khi biên dịch extension.
 
 Dữ liệu được phân bố như sau:
 
@@ -297,7 +303,21 @@ Tham số cần điều chỉnh:
 | `innodb_buffer_pool_size` | 2 GB | 16 đến 24 GB | `command:` của `db` |
 | Redis `maxmemory` | 256 đến 512 MB | 2 GB | `command:` của `redis` |
 | `opcache.memory_consumption` | 256 MB | 512 MB | `php/Dockerfile` |
-| Apache `MaxRequestWorkers` | mặc định | 300 đến 500 | cấu hình Apache bổ sung |
+| Apache `MaxRequestWorkers` | tự động 32–64 | 300 đến 500 (đặt `APACHE_MAX_REQUEST_WORKERS`) | `php/entrypoint.sh` hoặc `.env` |
+
+`MaxRequestWorkers` được entrypoint tính theo công thức:
+
+```text
+min(nproc * 16, (RAM_khả_dụng - dự_phòng) / 64 MB, 150)
+```
+
+Dự phòng 1,5 GB cho host 4 GB và 2 GB cho host 8 GB, dành cho MySQL, Redis,
+Caddy, Ofelia và hệ điều hành. `StartServers = 2 * nproc`,
+`MinSpareServers = nproc`, `MaxSpareServers = 4 * nproc` (không vượt quá
+`MaxRequestWorkers`). Với container có `mem_limit` hoặc `cpus`, entrypoint đọc
+giới hạn cgroup thay vì dùng toàn bộ RAM/CPU của host. Nếu đặt
+`APACHE_MAX_REQUEST_WORKERS` lớn hơn 256, entrypoint tự đặt `ServerLimit` tương
+ứng để Apache không báo lỗi.
 
 Khi vượt ngưỡng trên, tách MySQL sang máy chủ riêng bằng cách đổi host cơ sở dữ
 liệu, sau đó nhân bản container `moodle` phía sau bộ cân bằng tải.

@@ -163,6 +163,11 @@ services:
       MOODLE_DB_NAME: ${MOODLE_DB_NAME}
       MOODLE_DB_USER: ${MOODLE_DB_USER}
       MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
+      # Mac dinh de trong = entrypoint tu tinh theo CPU/RAM
+      APACHE_MAX_REQUEST_WORKERS: ${APACHE_MAX_REQUEST_WORKERS:-}
+      APACHE_START_SERVERS: ${APACHE_START_SERVERS:-}
+      MOODLE_WORKER_MEM_MB: ${MOODLE_WORKER_MEM_MB:-64}
+      MOODLE_MEM_RESERVE_MB: ${MOODLE_MEM_RESERVE_MB:-}
     depends_on:
       db:
         condition: service_healthy
