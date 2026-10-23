@@ -211,6 +211,36 @@ Ofelia chạy `mysqldump` hằng ngày và ghi đè `backup/moodle_latest.sql`. 
 backup nằm trên cùng máy chủ nên cần đồng bộ ra ngoài bằng rsync, rclone hoặc
 lưu trữ đối tượng.
 
+### Xuất và nhập image để chạy offline
+
+Dùng khi máy chủ mới không có Internet hoặc muốn tránh build và pull image mỗi
+lần dựng lại:
+
+```bash
+# Trên máy đang chạy ổn định
+cd /duong-dan/moodle-server
+mkdir -p backup/images
+docker save $(docker compose config --images) \
+  | gzip -6 > backup/images/moodle-images.tar.gz
+
+# Trên máy mới, sau khi đã sao chép mã nguồn, moodledata, .env và backup/
+gunzip -c backup/images/moodle-images.tar.gz | docker load
+docker compose up -d --no-build
+```
+
+Hoặc dùng script:
+
+```bash
+sh scripts/images-save.sh
+sh scripts/images-load.sh
+```
+
+Tệp image chỉ chứa image Docker, không chứa `moodle/`, `moodledata/`, `.env`
+hay dữ liệu MySQL. Cần sao chép các phần đó và `backup/moodle_latest.sql` để
+hệ thống chạy đúng. Giữ tên thư mục dự án là `moodle-server`, hoặc đặt
+`COMPOSE_PROJECT_NAME=moodle-server` trong `.env`, để tên image build khớp với
+tên image đã xuất.
+
 ### Log
 
 | Dịch vụ | Đường dẫn | Định dạng |
