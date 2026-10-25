@@ -31,9 +31,11 @@ và Redis, sau đó trả kết quả về Caddy.
 PHP 8.5 chạy trong các tiến trình PHP-FPM, tách khỏi tiến trình Apache. Apache dùng
 `mpm_event` với thread thay vì `mpm_prefork`, nên một tiến trình Apache phục vụ
 được nhiều kết nối mà không cấp thêm RAM cho từng kết nối. Entrypoint tự tính số
-worker theo CPU và RAM rồi ghi vào cả `mpm_event.conf` và cấu hình PHP-FPM; có
-thể ghim bằng `APACHE_MAX_REQUEST_WORKERS` trong `.env`. Quá trình build cũng
-dùng `-j$(nproc)` khi biên dịch extension.
+worker theo CPU và RAM rồi ghi vào `mpm_event.conf` và cấu hình PHP-FPM. Apache
+mặc định 40 thread, còn PHP-FPM mặc định tối đa 24 tiến trình để giới hạn RAM;
+hai mức này chỉnh riêng bằng `APACHE_MAX_REQUEST_WORKERS` và
+`PHP_FPM_MAX_CHILDREN` trong `.env`. Quá trình build cũng dùng `-j$(nproc)` khi
+biên dịch extension.
 
 Dữ liệu được phân bố như sau:
 
@@ -366,7 +368,7 @@ Tham số cần điều chỉnh:
 | Redis `maxmemory` | 256 đến 512 MB | 2 GB | `command:` của `redis` |
 | `opcache.memory_consumption` | 256 MB | 512 MB | `php/Dockerfile` |
 | Apache `MaxRequestWorkers` (thread, event MPM) | tự động 32–64 | 300 đến 500 (đặt `APACHE_MAX_REQUEST_WORKERS`) | `php/entrypoint.sh` hoặc `.env` |
-| PHP-FPM `pm.max_children` | bằng số worker tính được | 300 đến 500 | `php/entrypoint.sh` |
+| PHP-FPM `pm.max_children` | 24 (mặc định) | 300 đến 500 (đặt `PHP_FPM_MAX_CHILDREN`) | `php/entrypoint.sh` hoặc `.env` |
 
 `MaxRequestWorkers` được entrypoint tính theo công thức:
 
@@ -379,15 +381,19 @@ Caddy, Ofelia và hệ điều hành. `MaxRequestWorkers` là số thread của 
 không phải số tiến trình: entrypoint đặt `ThreadsPerChild = 10`,
 `ServerLimit = ceil(worker / 10)` và `MaxRequestWorkers` được làm tròn lên bội
 số của 10. Vì vậy 40 worker tương ứng 4 tiến trình Apache, mỗi tiến trình 10
-thread. PHP-FPM nhận cùng con số qua `pm.max_children`, cùng
-`pm.start_servers = 2 * nproc`, `pm.min_spare_servers = nproc`,
+thread.
+
+PHP-FPM có giới hạn riêng, mặc định `pm.max_children = 24`, đặt bằng
+`PHP_FPM_MAX_CHILDREN` và không vượt quá số worker Apache. Các tham số còn lại
+là `pm.start_servers = 2 * nproc`, `pm.min_spare_servers = nproc`,
 `pm.max_spare_servers = 4 * nproc` (không vượt quá `pm.max_children`) và
 `pm.max_requests = 500`. Với container có `mem_limit` hoặc `cpus`, entrypoint
 đọc giới hạn cgroup thay vì dùng toàn bộ RAM/CPU của host.
 
 RAM thực tế do PHP-FPM quyết định, vì mỗi worker PHP là một tiến trình riêng;
 event MPM chỉ giảm phần overhead của Apache. Trên máy 4 GB nên giữ
-`APACHE_MAX_REQUEST_WORKERS=40` và theo dõi bộ nhớ trước khi tăng.
+`APACHE_MAX_REQUEST_WORKERS=40`, `PHP_FPM_MAX_CHILDREN=24` và theo dõi bộ nhớ
+trước khi tăng.
 
 Khi vượt ngưỡng trên, tách MySQL sang máy chủ riêng bằng cách đổi host cơ sở dữ
 liệu, sau đó nhân bản container `moodle` phía sau bộ cân bằng tải.

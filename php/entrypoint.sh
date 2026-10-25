@@ -150,9 +150,20 @@ configure_apache_mpm() {
   fi
   [ "$max_workers" -ge 1 ] 2>/dev/null || max_workers=1
 
+  # Gioi han rieng cua PHP-FPM de tiet kiem RAM, mac dinh 24
+  fpm_children="${PHP_FPM_MAX_CHILDREN:-24}"
+  case "$fpm_children" in
+    *[!0-9]*|'')
+      echo "[fpm] PHP_FPM_MAX_CHILDREN khong hop le, dung 24" >&2
+      fpm_children=24
+      ;;
+  esac
+  [ "$fpm_children" -ge 1 ] 2>/dev/null || fpm_children=1
+  [ "$fpm_children" -gt "$max_workers" ] && fpm_children="$max_workers"
+
   start_servers=$((cpus * 2))
   [ "$start_servers" -lt 2 ] && start_servers=2
-  [ "$start_servers" -gt "$max_workers" ] && start_servers="$max_workers"
+  [ "$start_servers" -gt "$fpm_children" ] && start_servers="$fpm_children"
   [ "$start_servers" -ge 1 ] 2>/dev/null || start_servers=1
 
   min_spare="$cpus"
@@ -161,7 +172,7 @@ configure_apache_mpm() {
 
   max_spare=$((cpus * 4))
   [ "$max_spare" -lt 4 ] && max_spare=4
-  [ "$max_spare" -gt "$max_workers" ] && max_spare="$max_workers"
+  [ "$max_spare" -gt "$fpm_children" ] && max_spare="$fpm_children"
   [ "$max_spare" -lt "$min_spare" ] && max_spare="$min_spare"
   [ "$start_servers" -gt "$max_spare" ] && max_spare="$start_servers"
   [ "$min_spare" -gt "$start_servers" ] && min_spare="$start_servers"
@@ -216,7 +227,7 @@ ServerLimit             ${server_limit}
 
   echo "[mpm] event: CPU=${cpus}, RAM=${limit_mb}MB, du phong=${reserve_mb}MB, ${worker_mb}MB/worker"
   echo "[mpm] MaxRequestWorkers=${event_workers} (thread), ThreadsPerChild=${threads_per_child}, ServerLimit=${server_limit}, StartServers=${start_servers_event}"
-  echo "[fpm] pm.max_children=${max_workers}, start=${start_servers}, min_spare=${min_spare}, max_spare=${max_spare}"
+  echo "[fpm] pm.max_children=${fpm_children}, start=${start_servers}, min_spare=${min_spare}, max_spare=${max_spare}"
 
   if ! apache2ctl -t >/tmp/apache-config-test.log 2>&1; then
     echo "[mpm] Cau hinh Apache khong hop le:" >&2
@@ -235,7 +246,7 @@ group = www-data
 listen = 127.0.0.1:9000
 listen.allowed_clients = 127.0.0.1
 pm = dynamic
-pm.max_children = ${max_workers}
+pm.max_children = ${fpm_children}
 pm.start_servers = ${start_servers}
 pm.min_spare_servers = ${min_spare}
 pm.max_spare_servers = ${max_spare}
