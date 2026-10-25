@@ -240,9 +240,9 @@ sh scripts/images-load.sh
 
 Tệp image chỉ chứa image Docker, không chứa `moodle/`, `moodledata/`, `.env`
 hay dữ liệu MySQL. Cần sao chép các phần đó và `backup/moodle_latest.sql` để
-hệ thống chạy đúng. Giữ tên thư mục dự án là `moodle-server`, hoặc đặt
-`COMPOSE_PROJECT_NAME=moodle-server` trong `.env`, để tên image build khớp với
-tên image đã xuất.
+hệ thống chạy đúng. Tên image đã cố định là `moodle-server-moodle:latest` và
+`moodle-caddy:latest`, nên thư mục dự án có thể đặt tên bất kỳ. Biến
+`COMPOSE_PROJECT_NAME` chỉ dùng để giữ tên volume và network ổn định.
 
 ### Log
 

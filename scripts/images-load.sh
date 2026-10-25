@@ -45,7 +45,9 @@ for img in $IMAGES; do
     fi
 done
 if [ "$missing" -ne 0 ]; then
-    echo "Thiếu image. Kiểm tra lại tên thư mục dự án hoặc COMPOSE_PROJECT_NAME trong .env." >&2
+    echo "Thiếu image. Kiểm tra COMPOSE_PROJECT_NAME trong .env." >&2
+    echo "Image moodle hiện có:" >&2
+    docker images --format '  - {{.Repository}}:{{.Tag}}' | grep -i moodle >&2 || true
     exit 1
 fi
 

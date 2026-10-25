@@ -130,6 +130,7 @@ services:
       - moodle_net
 
   moodle:
+    image: moodle-server-moodle:latest
     build:
       context: ./php
       args:
