@@ -1,10 +1,11 @@
-FROM php:8.5-apache
+FROM php:8.5-fpm
 
-# www-data chay bang UID/GID cua user host, khong dung chmod 777
+# www-data theo UID/GID cua host
 ARG PUID=1000
 ARG PGID=1000
 
 RUN apt-get update && apt-get install -y \
+    apache2 apache2-utils util-linux \
     locales \
     libpng-dev libjpeg-dev libfreetype6-dev \
     libzip-dev libicu-dev libxml2-dev libxslt1-dev \
@@ -29,7 +30,7 @@ ENV LANG=en_US.UTF-8 \
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# build tu GitHub vi pecl.php.net hay loi; GitHub bi chan thi fallback pecl
+# Uu tien GitHub, fallback pecl
 ARG PHPREDIS_VERSION=6.3.0
 
 RUN set -eux; \
@@ -50,25 +51,40 @@ RUN set -eux; \
     fi; \
     docker-php-ext-enable redis
 
-# PHP 8.5 da tich hop san OPcache va sodium trong base image.
-# Neu dua vao docker-php-ext-install se loi cp: cannot stat 'modules/*'.
+# OPcache va sodium co san trong base image
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
     gd mysqli zip intl soap xsl mbstring exif bcmath sockets
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
-    && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf \
-    && a2enmod rewrite
+
+# Apache event + PHP-FPM, khong dung mod_php/prefork
+RUN set -eux; \
+    a2dismod mpm_prefork || true; \
+    a2enmod mpm_event proxy proxy_fcgi rewrite headers; \
+    a2enconf security || true; \
+    rm -f /usr/local/etc/php-fpm.d/*.conf; \
+    sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf; \
+    sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
 RUN { \
     echo '<Directory "${APACHE_DOCUMENT_ROOT}">'; \
     echo '    Options FollowSymLinks'; \
     echo '    AllowOverride All'; \
     echo '    Require all granted'; \
+    echo '    AcceptPathInfo On'; \
     echo '    FallbackResource /index.php'; \
     echo '</Directory>'; \
     } >> /etc/apache2/apache2.conf
+
+# SetHandler giu PATH_INFO cho URL kieu /lib/requirejs.php/...
+RUN { \
+    echo '<FilesMatch "\.php$">'; \
+    echo '    SetHandler "proxy:fcgi://127.0.0.1:9000"'; \
+    echo '</FilesMatch>'; \
+    echo 'ProxyTimeout 300'; \
+    } > /etc/apache2/conf-available/moodle-php-fpm.conf \
+    && a2enconf moodle-php-fpm
 
 RUN sed -i 's#^[ \t]*ErrorLog .*#ErrorLog "|/usr/bin/rotatelogs /var/log/moodle/error-%Y-%m-%d.log 86400"#' /etc/apache2/sites-available/000-default.conf \
     && sed -i 's#^[ \t]*CustomLog .*#CustomLog "|/usr/bin/rotatelogs /var/log/moodle/access-%Y-%m-%d.log 86400" combined#' /etc/apache2/sites-available/000-default.conf
@@ -95,7 +111,7 @@ RUN { \
     echo 'opcache.jit_buffer_size=100M'; \
     } > /usr/local/etc/php/conf.d/moodle-optimizations.ini
 
-# an phien ban Apache trong header va trang loi
+# An phien ban Apache
 RUN { \
     echo 'ServerTokens Prod'; \
     echo 'ServerSignature Off'; \
@@ -106,4 +122,6 @@ COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /var/www/html
+EXPOSE 80
+STOPSIGNAL SIGTERM
 ENTRYPOINT ["entrypoint.sh"]

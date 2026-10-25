@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# UID/GID: uu tien PUID/PGID, neu khong tu do owner moodle/ hoac moodledata/
+# UID/GID: PUID/PGID hoac owner cua moodle/
 detect_ids() {
   if [ -n "${PUID:-}" ] && [ -n "${PGID:-}" ]; then
     echo "${PUID} ${PGID}"
@@ -11,7 +11,7 @@ detect_ids() {
     [ -d "$d" ] || continue
     u="$(stat -c %u "$d")"
     g="$(stat -c %g "$d")"
-    # bo qua root va UID he thong (< 1000) cua ban cu dung 777
+    # bo qua root/UID he thong (< 1000)
     if [ "$u" -ge 1000 ] 2>/dev/null; then
       echo "${u} ${g}"
       return
@@ -32,7 +32,7 @@ echo "www-data = $(id -u www-data):$(id -g www-data)"
 mkdir -p /var/www/moodledata /var/log/moodle /var/log/php \
          /logs/caddy /logs/mysql /logs/redis
 
-# /logs/mysql va /logs/redis do db/redis ghi; chi them group cua user host
+# db/redis ghi /logs/mysql va /logs/redis
 chown -R "${U}:${G}" /logs/caddy /var/log/moodle /var/log/php 2>/dev/null || true
 chown "${U}:${G}" /logs /backup 2>/dev/null || true
 chown -R "${U}:${G}" /backup 2>/dev/null || true
@@ -53,7 +53,7 @@ ensure_owner() {
   if [ -n "$(find "$dir" \( ! -user "$U" -o ! -group "$G" -o -perm -o+w \) -print -quit 2>/dev/null)" ]; then
     echo "Fixing ownership in $dir ..."
     chown -R "${U}:${G}" "$dir" || true
-    # ha quyen 777 cua ban cu, khong dung toi thu muc 700 (vd sessions)
+    # ha quyen 777 cu, giu thu muc 700
     find "$dir" -perm -o+w -type d -exec chmod 755 {} + 2>/dev/null || true
     find "$dir" -perm -o+w -type f -exec chmod u+rwX,go+r-w {} + 2>/dev/null || true
   fi
@@ -68,16 +68,18 @@ if [ -f "/var/www/html/composer.json" ]; then
     composer install --no-dev --classmap-authoritative --no-interaction
 fi
 
-# Tinh MPM theo CPU/RAM de dung cho ca 4 GB/2 vCPU va 8 GB/4 vCPU.
-# Co the ghi de bang APACHE_MAX_REQUEST_WORKERS hoac APACHE_START_SERVERS.
+# Tinh worker theo CPU/RAM; ghi de bang APACHE_MAX_REQUEST_WORKERS
 configure_apache_mpm() {
-  conf=/etc/apache2/mods-enabled/mpm_prefork.conf
-  [ -f "$conf" ] || return 0
+  conf=/etc/apache2/mods-enabled/mpm_event.conf
+  if [ ! -f "$conf" ]; then
+    echo "[mpm] mpm_event chua duoc bat trong image" >&2
+    exit 1
+  fi
 
   cpus="$(nproc 2>/dev/null || echo 2)"
   [ "$cpus" -ge 1 ] 2>/dev/null || cpus=2
 
-  # Docker co the gioi han CPU bang cgroup; nproc chi thay affinity.
+  # Docker co the gioi han CPU bang cgroup
   if [ -r /sys/fs/cgroup/cpu.max ]; then
     read -r quota period < /sys/fs/cgroup/cpu.max || true
     if [ -n "${quota:-}" ] && [ "$quota" != "max" ] && [ "${period:-0}" -gt 0 ] 2>/dev/null; then
@@ -95,7 +97,6 @@ configure_apache_mpm() {
   host_mb="$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || true)"
   [ -n "$host_mb" ] && [ "$host_mb" -ge 512 ] 2>/dev/null || host_mb=4096
 
-  # memory.max = gioi han container; "max" = dung RAM cua host.
   limit_mb="$host_mb"
   if [ -r /sys/fs/cgroup/memory.max ]; then
     limit="$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo max)"
@@ -112,7 +113,7 @@ configure_apache_mpm() {
     limit_mb="$host_mb"
   fi
 
-  # Khong co mem_limit: giu lai RAM cho MySQL, Redis, Caddy, Ofelia va OS.
+  # Giu RAM cho MySQL, Redis, Caddy, Ofelia va OS
   if [ -n "${MOODLE_MEM_RESERVE_MB:-}" ]; then
     reserve_mb="$MOODLE_MEM_RESERVE_MB"
   elif [ "$limit_mb" -lt $((host_mb * 9 / 10)) ]; then
@@ -151,16 +152,6 @@ configure_apache_mpm() {
 
   start_servers=$((cpus * 2))
   [ "$start_servers" -lt 2 ] && start_servers=2
-  if [ -n "${APACHE_START_SERVERS:-}" ]; then
-    case "$APACHE_START_SERVERS" in
-      *[!0-9]*|'')
-        echo "[mpm] APACHE_START_SERVERS khong hop le, dung gia tri tu dong" >&2
-        ;;
-      *)
-        start_servers="$APACHE_START_SERVERS"
-        ;;
-    esac
-  fi
   [ "$start_servers" -gt "$max_workers" ] && start_servers="$max_workers"
   [ "$start_servers" -ge 1 ] 2>/dev/null || start_servers=1
 
@@ -172,27 +163,60 @@ configure_apache_mpm() {
   [ "$max_spare" -lt 4 ] && max_spare=4
   [ "$max_spare" -gt "$max_workers" ] && max_spare="$max_workers"
   [ "$max_spare" -lt "$min_spare" ] && max_spare="$min_spare"
+  [ "$start_servers" -gt "$max_spare" ] && max_spare="$start_servers"
+  [ "$min_spare" -gt "$start_servers" ] && min_spare="$start_servers"
+
+  # ThreadsPerChild=10: MaxRequestWorkers=40 = 4 process * 10 thread
+  threads_per_child=10
+  [ "$max_workers" -lt 10 ] && threads_per_child=1
+  server_limit=$(( (max_workers + threads_per_child - 1) / threads_per_child ))
+  event_workers=$(( server_limit * threads_per_child ))
+
+  start_servers_event=$cpus
+  [ "$start_servers_event" -lt 2 ] && start_servers_event=2
+  if [ -n "${APACHE_START_SERVERS:-}" ]; then
+    case "$APACHE_START_SERVERS" in
+      *[!0-9]*|'')
+        echo "[mpm] APACHE_START_SERVERS khong hop le, dung gia tri tu dong" >&2
+        ;;
+      *)
+        start_servers_event="$APACHE_START_SERVERS"
+        ;;
+    esac
+  fi
+  [ "$start_servers_event" -gt "$server_limit" ] && start_servers_event="$server_limit"
+  [ "$start_servers_event" -ge 1 ] 2>/dev/null || start_servers_event=1
+
+  min_spare_threads=$((cpus * 2))
+  [ "$min_spare_threads" -lt 4 ] && min_spare_threads=4
+  [ "$min_spare_threads" -gt "$event_workers" ] && min_spare_threads="$event_workers"
+
+  max_spare_threads=$((cpus * 4))
+  [ "$max_spare_threads" -lt 8 ] && max_spare_threads=8
+  [ "$max_spare_threads" -gt "$event_workers" ] && max_spare_threads="$event_workers"
+  [ "$max_spare_threads" -lt "$min_spare_threads" ] && max_spare_threads="$min_spare_threads"
 
   sed -i -E \
-    -e "s/^([[:space:]]*StartServers[[:space:]]+)[0-9]+/\1${start_servers}/" \
-    -e "s/^([[:space:]]*MinSpareServers[[:space:]]+)[0-9]+/\1${min_spare}/" \
-    -e "s/^([[:space:]]*MaxSpareServers[[:space:]]+)[0-9]+/\1${max_spare}/" \
-    -e "s/^([[:space:]]*MaxRequestWorkers[[:space:]]+)[0-9]+/\1${max_workers}/" \
+    -e "s/^([[:space:]]*StartServers[[:space:]]+)[0-9]+/\1${start_servers_event}/" \
+    -e "s/^([[:space:]]*MinSpareThreads[[:space:]]+)[0-9]+/\1${min_spare_threads}/" \
+    -e "s/^([[:space:]]*MaxSpareThreads[[:space:]]+)[0-9]+/\1${max_spare_threads}/" \
+    -e "s/^([[:space:]]*ThreadLimit[[:space:]]+)[0-9]+/\1 64/" \
+    -e "s/^([[:space:]]*ThreadsPerChild[[:space:]]+)[0-9]+/\1${threads_per_child}/" \
+    -e "s/^([[:space:]]*MaxRequestWorkers[[:space:]]+)[0-9]+/\1${event_workers}/" \
+    -e "s/^([[:space:]]*MaxConnectionsPerChild[[:space:]]+)[0-9]+/\1 0/" \
     "$conf"
 
-  # MaxRequestWorkers > 256 can ServerLimit mac dinh cua prefork.
-  if [ "$max_workers" -gt 256 ]; then
-    if grep -qE '^[[:space:]]*ServerLimit[[:space:]]+' "$conf"; then
-      sed -i -E "s/^([[:space:]]*ServerLimit[[:space:]]+)[0-9]+/\1${max_workers}/" "$conf"
-    else
-      sed -i "/^[[:space:]]*MaxRequestWorkers[[:space:]]/i\\
-ServerLimit            ${max_workers}
+  if grep -qE '^[[:space:]]*ServerLimit[[:space:]]+' "$conf"; then
+    sed -i -E "s/^([[:space:]]*ServerLimit[[:space:]]+)[0-9]+/\1${server_limit}/" "$conf"
+  else
+    sed -i "/^[[:space:]]*MaxRequestWorkers[[:space:]]/i\\
+ServerLimit             ${server_limit}
 " "$conf"
-    fi
   fi
 
-  echo "[mpm] CPU=${cpus}, RAM=${limit_mb}MB, du phong=${reserve_mb}MB, ${worker_mb}MB/worker"
-  echo "[mpm] MaxRequestWorkers=${max_workers}, StartServers=${start_servers}, MinSpareServers=${min_spare}, MaxSpareServers=${max_spare}"
+  echo "[mpm] event: CPU=${cpus}, RAM=${limit_mb}MB, du phong=${reserve_mb}MB, ${worker_mb}MB/worker"
+  echo "[mpm] MaxRequestWorkers=${event_workers} (thread), ThreadsPerChild=${threads_per_child}, ServerLimit=${server_limit}, StartServers=${start_servers_event}"
+  echo "[fpm] pm.max_children=${max_workers}, start=${start_servers}, min_spare=${min_spare}, max_spare=${max_spare}"
 
   if ! apache2ctl -t >/tmp/apache-config-test.log 2>&1; then
     echo "[mpm] Cau hinh Apache khong hop le:" >&2
@@ -202,7 +226,81 @@ ServerLimit            ${max_workers}
   rm -f /tmp/apache-config-test.log
 }
 
-configure_apache_mpm
+configure_php_fpm() {
+  conf=/usr/local/etc/php-fpm.d/zz-moodle.conf
+  cat > "$conf" <<EOF
+[www]
+user = www-data
+group = www-data
+listen = 127.0.0.1:9000
+listen.allowed_clients = 127.0.0.1
+pm = dynamic
+pm.max_children = ${max_workers}
+pm.start_servers = ${start_servers}
+pm.min_spare_servers = ${min_spare}
+pm.max_spare_servers = ${max_spare}
+pm.max_requests = 500
+request_terminate_timeout = 300s
+catch_workers_output = yes
+decorate_workers_output = no
+clear_env = no
+EOF
+  chmod 644 "$conf"
 
-echo "Starting Apache..."
-exec apache2-foreground
+  if ! php-fpm -t >/tmp/php-fpm-test.log 2>&1; then
+    echo "[fpm] Cau hinh PHP-FPM khong hop le:" >&2
+    cat /tmp/php-fpm-test.log >&2
+    exit 1
+  fi
+  rm -f /tmp/php-fpm-test.log
+}
+
+start_services() {
+  echo "Starting PHP-FPM..."
+  php-fpm -F &
+  fpm_pid=$!
+
+  fpm_ready=0
+  for _ in $(seq 1 50); do
+    if ! kill -0 "$fpm_pid" 2>/dev/null; then
+      echo "[fpm] PHP-FPM thoat khi khoi dong" >&2
+      wait "$fpm_pid" 2>/dev/null || true
+      exit 1
+    fi
+    if (exec 3<>/dev/tcp/127.0.0.1/9000) 2>/dev/null; then
+      fpm_ready=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [ "$fpm_ready" -ne 1 ]; then
+    echo "[fpm] Het thoi gian cho PHP-FPM listen tren 127.0.0.1:9000" >&2
+    kill -TERM "$fpm_pid" 2>/dev/null || true
+    wait "$fpm_pid" 2>/dev/null || true
+    exit 1
+  fi
+
+  echo "Starting Apache (mpm_event)..."
+  . /etc/apache2/envvars
+  apache2 -DFOREGROUND &
+  apache_pid=$!
+
+  cleanup() {
+    kill -TERM "$fpm_pid" "$apache_pid" 2>/dev/null || true
+  }
+  trap 'cleanup; exit 0' TERM INT QUIT
+
+  set +e
+  wait -n "$fpm_pid" "$apache_pid"
+  status=$?
+  set -e
+
+  cleanup
+  wait "$fpm_pid" 2>/dev/null || true
+  wait "$apache_pid" 2>/dev/null || true
+  exit "$status"
+}
+
+configure_apache_mpm
+configure_php_fpm
+start_services

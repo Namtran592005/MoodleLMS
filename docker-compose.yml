@@ -18,7 +18,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    # access.log mode 644 (Caddy mac dinh 600) de user host doc duoc
+    # access.log 644 de user host doc duoc
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -53,14 +53,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
-    # root de sua owner log truoc khi mysqld drop xuong user mysql
+    # root de sua owner log truoc khi mysqld drop user
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         set -e
         mkdir -p /var/log/mysql
-        # chi doi owner, giu group de host van doc duoc log
         chown -R mysql /var/log/mysql 2>/dev/null || true
         chmod 2770 /var/log/mysql 2>/dev/null || true
         chmod 0775 /backup 2>/dev/null || true
@@ -156,14 +155,13 @@ services:
       - ./logs:/logs
       - ./scripts/log-rotate.sh:/usr/local/bin/log-rotate.sh:ro
     environment:
-      # de trong = tu dong do owner cua moodle/ hoac moodledata/
       PUID: ${PUID:-}
       PGID: ${PGID:-}
       MOODLE_DB_HOST: db
       MOODLE_DB_NAME: ${MOODLE_DB_NAME}
       MOODLE_DB_USER: ${MOODLE_DB_USER}
       MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
-      # Mac dinh de trong = entrypoint tu tinh theo CPU/RAM
+      # de trong = tu tinh theo CPU/RAM
       APACHE_MAX_REQUEST_WORKERS: ${APACHE_MAX_REQUEST_WORKERS:-}
       APACHE_START_SERVERS: ${APACHE_START_SERVERS:-}
       MOODLE_WORKER_MEM_MB: ${MOODLE_WORKER_MEM_MB:-64}
@@ -179,7 +177,7 @@ services:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.moodle-cron.schedule=@every 1m"
       - "ofelia.job-exec.moodle-cron.command=setpriv --reuid www-data --regid www-data --init-groups php /var/www/html/admin/cli/cron.php"
-      # 17h UTC = 0h VN, giu 30 ngay
+      # 17h UTC = 0h VN
       - "ofelia.job-exec.logs-rotate.schedule=0 17 * * *"
       - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
 
