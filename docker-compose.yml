@@ -178,7 +178,7 @@ services:
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.moodle-cron.schedule=@every 1m"
-      - "ofelia.job-exec.moodle-cron.command=setpriv --reuid www-data --regid www-data --init-groups php /var/www/html/admin/cli/cron.php"
+      - "ofelia.job-exec.moodle-cron.command=setpriv --reuid www-data --regid www-data --init-groups php /var/www/html/admin/cli/cron.php --keep-alive=0"
       # 17h UTC = 0h VN
       - "ofelia.job-exec.logs-rotate.schedule=0 17 * * *"
       - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
@@ -187,6 +187,9 @@ services:
     image: mcuadros/ofelia:latest
     container_name: moodle_cron_scheduler
     restart: always
+    # Ofelia tang RAM theo thoi gian (upstream #157)
+    mem_limit: 256m
+    memswap_limit: 256m
     logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "pidof ofelia >/dev/null"]

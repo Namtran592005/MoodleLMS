@@ -268,7 +268,13 @@ số vào `command:` của dịch vụ `db`:
 
 Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản triển khai,
 nên tệp cache và session do cron tạo không gây lỗi quyền cho các tiến trình
-khác.
+khác. Lệnh dùng `--keep-alive=0` để xử lý xong task là thoát, thay vì giữ tiến
+trình 180 giây mặc định của Moodle; nhờ vậy không có nhiều phiên cron song song
+và log không bị đầy bởi dòng chờ task.
+
+Ofelia có lỗi tăng bộ nhớ theo thời gian chưa được sửa (upstream issue #157),
+nên service `cron` được giới hạn `mem_limit: 256m`. Nếu vượt, Docker kill và
+`restart: always` khởi động lại; lần cron kế tiếp vẫn chạy bình thường.
 
 ### Vá lỗi JS usermenu
 
