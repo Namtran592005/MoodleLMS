@@ -1,22 +1,21 @@
 # Moodle LMS — Docker Skeleton
 
 Khung triển khai Moodle 5.x bằng Docker Compose, bao gồm reverse proxy, TLS tự
-động, PHP production, MySQL, Redis, cron và backup. Mục tiêu là rút gọn việc
-dựng một hệ thống LMS trên máy chủ Linux xuống còn một lệnh khởi động, đồng
-thời giữ cấu hình đủ chặt để vận hành thực tế.
+động, PHP production, MySQL, Redis, cron và backup. Mục tiêu là dựng một hệ thống
+LMS trên máy chủ Linux bằng một lệnh khởi động, với cấu hình đủ chặt để vận hành
+thực tế.
 
-Kho mã nguồn chỉ chứa khung cấu hình. Mã nguồn Moodle, `moodledata/`,
-`backup/`, `logs/`, `.env` và tài liệu nội bộ không được đưa vào kho (xem
-`.gitignore`).
+Kho mã nguồn chỉ chứa khung cấu hình. Mã nguồn Moodle, `moodledata/`, `backup/`,
+`logs/`, `.env` và tài liệu nội bộ không được đưa vào kho (xem `.gitignore`).
 
 ## Thành phần hệ thống
 
 | Dịch vụ | Image | Vai trò | Cổng |
 |---|---|---|---|
 | `caddy` | build `./caddy` | Reverse proxy (Caddy latest + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
-| `db` | `mysql:9` | Cơ sở dữ liệu MySQL 9 LTS, `utf8mb4` | nội bộ 3306 |
+| `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | nội bộ 3306 |
 | `redis` | `redis:latest` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
-| `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, DocumentRoot `/public` | nội bộ 80 |
+| `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html` | nội bộ 80 |
 | `cron` | `mcuadros/ofelia` | Cron Moodle, backup hằng ngày, xoay log | không mở |
 
 Chỉ `caddy` mở cổng ra ngoài. Các dịch vụ còn lại chỉ truy cập được trong mạng
@@ -28,14 +27,13 @@ Yêu cầu từ trình duyệt được Caddy tiếp nhận qua HTTPS và chuy�
 Apache/PHP trong `moodle_web`. PHP đọc ghi thư mục `moodledata`, truy vấn MySQL
 và Redis, sau đó trả kết quả về Caddy.
 
-PHP 8.5 chạy trong các tiến trình PHP-FPM, tách khỏi tiến trình Apache. Apache dùng
-`mpm_event` với thread thay vì `mpm_prefork`, nên một tiến trình Apache phục vụ
-được nhiều kết nối mà không cấp thêm RAM cho từng kết nối. Entrypoint tự tính số
-worker theo CPU và RAM rồi ghi vào `mpm_event.conf` và cấu hình PHP-FPM. Apache
-mặc định 40 thread, còn PHP-FPM mặc định tối đa 24 tiến trình để giới hạn RAM;
-hai mức này chỉnh riêng bằng `APACHE_MAX_REQUEST_WORKERS` và
-`PHP_FPM_MAX_CHILDREN` trong `.env`. Quá trình build cũng dùng `-j$(nproc)` khi
-biên dịch extension.
+PHP 8.5 chạy trong các tiến trình PHP-FPM, tách khỏi tiến trình Apache. Apache
+dùng `mpm_event` với thread nên một tiến trình phục vụ được nhiều kết nối mà
+không cấp thêm RAM cho từng kết nối. Entrypoint tự tính số worker theo CPU và RAM
+rồi ghi vào `mpm_event.conf` và cấu hình PHP-FPM. Apache mặc định 40 thread, còn
+PHP-FPM mặc định tối đa 24 tiến trình để giới hạn RAM; hai mức này chỉnh riêng
+bằng `APACHE_MAX_REQUEST_WORKERS` và `PHP_FPM_MAX_CHILDREN` trong `.env`. Quá
+trình build cũng dùng `-j$(nproc)` khi biên dịch extension.
 
 Dữ liệu được phân bố như sau:
 
@@ -73,8 +71,8 @@ chmod 600 .env
 ls -ln .env
 ```
 
-Tệp `.env` phải thuộc tài khoản triển khai. Nếu được tạo bằng `sudo`, owner là
-`root` và `docker compose` cũng như các script backup sẽ báo `Permission denied`:
+Tệp `.env` phải thuộc tài khoản triển khai. Nếu được tạo bằng `sudo`, đổi lại
+owner trước khi chạy Compose:
 
 ```bash
 sudo chown "$USER":"$USER" .env
@@ -93,6 +91,7 @@ Các biến cần điền:
 | `TZ` | Múi giờ, mặc định `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
 | `PUID`, `PGID` | Không bắt buộc, dùng khi cần ép UID/GID |
+| `COMPOSE_PROJECT_NAME` | Giữ tên volume và network ổn định |
 
 ### 2. Đặt mã nguồn Moodle
 
@@ -190,15 +189,14 @@ bằng đúng UID của Moodle:
 docker exec -it -u www-data moodle_web bash
 ```
 
-Không chạy các lệnh `php admin/cli/...` bằng `root`, vì Moodle có thể tạo thư
-mục cache thuộc `root` và gây lỗi ghi cho Apache/PHP. Dùng `-u www-data` hoặc
-`setpriv`:
+Các lệnh `php admin/cli/...` cũng nên chạy bằng `-u www-data` để tệp cache
+không thuộc `root`:
 
 ```bash
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-Nếu đã lỡ tạo tệp bằng `root`, chuẩn hóa lại quyền bằng
+Nếu đã có tệp thuộc `root`, chuẩn hóa lại quyền bằng
 `bash scripts/fix-perms.sh`.
 
 ## Vận hành
@@ -266,35 +264,22 @@ số vào `command:` của dịch vụ `db`:
 
 ### Cron
 
-Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản triển khai,
-nên tệp cache và session do cron tạo không gây lỗi quyền cho các tiến trình
-khác. Lệnh dùng `--keep-alive=0` để xử lý xong task là thoát, thay vì giữ tiến
-trình 180 giây mặc định của Moodle; nhờ vậy không có nhiều phiên cron song song
-và log không bị đầy bởi dòng chờ task.
+Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản triển khai, với
+`--keep-alive=0` để mỗi lần chạy kết thúc ngay sau khi xử lý task. Service `cron`
+được giới hạn 256 MB và `restart: always` sẽ khởi động lại nếu vượt giới hạn.
 
-Ofelia có lỗi tăng bộ nhớ theo thời gian chưa được sửa (upstream issue #157),
-nên service `cron` được giới hạn `mem_limit: 256m`. Nếu vượt, Docker kill và
-`restart: always` khởi động lại; lần cron kế tiếp vẫn chạy bình thường.
+### Vá usermenu
 
-### Vá lỗi JS usermenu
-
-Moodle 5.3 có lỗi JS trên trang chưa đăng nhập: `.usermenu` không có
-`.dropdown-menu`, nhưng khi resize, `initTruncationTooltips()` vẫn đọc
-`classList` của phần tử `null` và báo `TypeError` trong console. Lỗi không
-chặn đăng nhập nhưng gây nhiễu log trình duyệt.
-
-Repo không chứa source Moodle, nên dùng script để vá lại sau khi cài hoặc nâng
-cấp Moodle:
+Repo không chứa source Moodle, nên sau khi cài hoặc nâng cấp, chạy script để vá
+usermenu:
 
 ```bash
 bash scripts/patch-usermenu.sh
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-Script vá cả source `lib/amd/src/usermenu.js` và bản build
-`lib/amd/build/usermenu.min.js`, lưu bản gốc vào `backup/usermenu-patch/`.
-Nếu Moodle đã sửa lỗi hoặc đổi mã, script dừng mà không ghi đè. Sau khi vá,
-hard refresh trình duyệt một lần để bỏ JS cũ trong cache.
+Script lưu bản gốc vào `backup/usermenu-patch/` và không ghi đè nếu mã nguồn đã
+thay đổi.
 
 ### Lệnh thường dùng
 
