@@ -262,6 +262,12 @@ số vào `command:` của dịch vụ `db`:
 --slow-query-log=1 --slow-query-log-file=/var/log/mysql/slow.log --long-query-time=2
 ```
 
+Dịch vụ `db` chạy với `--innodb-flush-log-at-trx-commit=2` và `--sync-binlog=0`
+để các tác vụ ghi hàng loạt như checkout gói ngôn ngữ không phải chờ `fsync`
+sau từng câu lệnh. Đổi lại, nếu máy chủ mất điện hoặc kernel panic, tối đa
+khoảng một giây giao dịch vừa commit có thể mất; dữ liệu vẫn nhất quán. Khi cần
+độ bền tuyệt đối, bỏ hai tham số này và chấp nhận tốc độ ghi chậm hơn nhiều.
+
 ### Cron
 
 Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản triển khai, với

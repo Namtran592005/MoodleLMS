@@ -74,6 +74,8 @@ services:
           --collation-server=utf8mb4_unicode_ci \
           --max-allowed-packet=128M \
           --innodb-file-per-table=1 \
+          --innodb-flush-log-at-trx-commit=2 \
+          --sync-binlog=0 \
           $$LOGOPT
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
