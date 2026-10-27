@@ -82,7 +82,7 @@ RUN { \
     echo '<FilesMatch "\.php$">'; \
     echo '    SetHandler "proxy:fcgi://127.0.0.1:9000"'; \
     echo '</FilesMatch>'; \
-    echo 'ProxyTimeout 300'; \
+    echo 'ProxyTimeout 900'; \
     } > /etc/apache2/conf-available/moodle-php-fpm.conf \
     && a2enconf moodle-php-fpm
 

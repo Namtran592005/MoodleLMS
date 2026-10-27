@@ -281,6 +281,12 @@ docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 Script lưu bản gốc vào `backup/usermenu-patch/` và không ghi đè nếu mã nguồn đã
 thay đổi.
 
+### Nhập gói ngôn ngữ tùy chỉnh
+
+Mở thẳng `/admin/tool/customlang/import.php?lng=vi` để vào form nhập ZIP. Mục
+Import trên menu chạy checkout trước nên với gói lớn có thể mất vài phút; PHP-FPM
+và Apache cho phép tối đa 900 giây cho một request.
+
 ### Lệnh thường dùng
 
 ```bash
