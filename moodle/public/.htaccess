@@ -1,0 +1,74 @@
+#=============================================================================
+# Moodle 5.x - /public/.htaccess
+#=============================================================================
+
+<IfModule mod_mime.c>
+    AcceptPathInfo On
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteRule ^(.*)$ r.php/$1 [L]
+</IfModule>
+
+Options -Indexes
+
+<FilesMatch "\.(bak|config|sql|fla|psd|ini|log|sh|inc|swp|dist)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresDefault "access plus 1 month"
+    ExpiresByType image/x-icon "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+</IfModule>
+
+#=============================================================================
+# Chan file nguon/schema nam trong webroot
+# Moodle 5.x dat mot so file build/schema trong public/. Cac file nay chi
+# duoc doc boi PHP, khong duoc phep tai qua HTTP.
+#=============================================================================
+
+# 1) File schema va metadata cua core/plugin
+<FilesMatch "^(install\.xml|environment\.xml|role_schema\.xml|thirdpartylibs\.xml|apis\.json|licenses\.json)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# 2) File *.schema.json (plugins, apis, subplugins)
+<FilesMatch "\.schema\.json$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# 3) Thu muc chi dung cho dev/test.
+# KHONG chan ca /lib/: /lib/yuilib/ va /lib/editor/ van phai tai duoc.
+RedirectMatch 404 "^/lib/(db|tests|phpunit)/"
+

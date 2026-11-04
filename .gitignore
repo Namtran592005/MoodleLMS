@@ -2,7 +2,10 @@
 .env.*
 !.env.example
 
-moodle/
+moodle/*
+!moodle/public/
+moodle/public/*
+!moodle/public/.htaccess
 moodledata/
 backup/
 logs/

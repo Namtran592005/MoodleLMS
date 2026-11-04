@@ -287,6 +287,28 @@ docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 Script lưu bản gốc vào `backup/usermenu-patch/` và không ghi đè nếu mã nguồn đã
 thay đổi.
 
+### Tệp .htaccess của webroot
+
+`moodle/public/.htaccess` là tệp cấu hình Apache quan trọng nên được giữ trong
+repo. Tệp bật router `r.php` của Moodle 5.x, chặn tải `install.xml`,
+`environment.xml`, `roles_schema.xml`, `*.schema.json`, các thư mục `lib/db`,
+`lib/tests`, `lib/phpunit` và tắt liệt kê thư mục.
+
+Khi giải nén bản Moodle mới, tệp này có thể bị ghi đè bằng bản mặc định. Khôi
+phục bản trong repo:
+
+```bash
+git checkout -- moodle/public/.htaccess
+install -m 644 moodle/public/.htaccess /duong-dan/moodle/public/.htaccess
+```
+
+Sau khi thay, kiểm tra cú pháp và tải thử một tệp tĩnh:
+
+```bash
+docker exec moodle_web apache2ctl -t
+curl -sS -o /dev/null -w '%{http_code}\n' http://localhost/theme/boost/style/moodle.css
+```
+
 ### Nhập gói ngôn ngữ tùy chỉnh
 
 Mở thẳng `/admin/tool/customlang/import.php?lng=vi` để vào form nhập ZIP. Mục
