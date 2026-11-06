@@ -1,91 +1,97 @@
 # Moodle LMS — Docker Skeleton
 
-Khung triển khai Moodle 5.x bằng Docker Compose: reverse proxy, TLS tự động, PHP
-production, MySQL, Redis, cron và backup. Mục tiêu là dựng hệ thống LMS trên máy
-chủ Linux bằng một lệnh khởi động, với cấu hình đủ chặt để vận hành thực tế.
+**English** | [Tiếng Việt](README.vi.md)
 
-Kho chỉ chứa khung cấu hình. Mã nguồn Moodle, `moodledata/`, `backup/`, `logs/`,
-`.env` và tài liệu nội bộ không đưa vào kho (xem `.gitignore`). Riêng
-`moodle/public/.htaccess` được giữ lại vì là tệp cấu hình Apache quan trọng.
+A Moodle 5.x deployment skeleton built with Docker Compose: reverse proxy,
+automatic TLS, production PHP, MySQL, Redis, cron and backups. The goal is to
+stand up an LMS on a Linux server with a single start command, using a
+configuration strict enough for real operation.
 
-## Thành phần hệ thống
+The repository holds only the configuration skeleton. Moodle source,
+`moodledata/`, `backup/`, `logs/`, `.env` and internal documentation stay out of
+the repo (see `.gitignore`). The one exception is `moodle/public/.htaccess`,
+kept because it is an important Apache configuration file.
 
-| Dịch vụ | Image | Vai trò | Cổng |
+## Components
+
+| Service | Image | Role | Ports |
 |---|---|---|---|
-| `caddy` | build `./caddy` | Reverse proxy (Caddy latest + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
-| `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | nội bộ 3306 |
-| `redis` | `redis:latest` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
-| `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | nội bộ 80 |
-| `cron` | `mcuadros/ofelia` | Cron Moodle, backup hằng ngày, xoay log | không mở |
+| `caddy` | build `./caddy` | Reverse proxy (Caddy latest + rate limit), automatic TLS, security headers | 80, 443, 443/udp |
+| `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | internal 3306 |
+| `redis` | `redis:latest` | Cache and sessions, 256 MB limit | internal 6379 |
+| `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | internal 80 |
+| `cron` | `mcuadros/ofelia` | Moodle cron, daily backup, log rotation | not exposed |
 
-Chỉ `caddy` mở cổng ra ngoài; các dịch vụ còn lại chỉ truy cập được trong mạng
+Only `caddy` publishes ports; the other services are reachable only inside
 `moodle_net`.
 
-## Kiến trúc
+## Architecture
 
-Caddy nhận HTTPS và chuyển tiếp tới Apache/PHP trong `moodle_web`. PHP đọc ghi
-`moodledata`, truy vấn MySQL và Redis rồi trả kết quả về Caddy. Apache dùng
-`mpm_event` với thread, PHP 8.5 chạy trong các tiến trình PHP-FPM tách riêng;
-số worker do entrypoint tính theo CPU và RAM, chi tiết ở mục **Cấu hình**.
+Caddy terminates HTTPS and forwards to Apache/PHP in `moodle_web`. PHP reads and
+writes `moodledata`, queries MySQL and Redis, then returns the response through
+Caddy. Apache runs `mpm_event` with threads while PHP 8.5 runs in separate
+PHP-FPM processes; the entrypoint sizes the worker count from CPU and RAM, see
+**Configuration**.
 
-Dữ liệu được phân bố như sau:
+Data is laid out as follows:
 
-| Đường dẫn | Nội dung | Hình thức lưu trữ |
+| Path | Contents | Storage |
 |---|---|---|
-| `moodle/` | Mã nguồn Moodle | Bind mount |
-| `moodledata/` | Tệp người dùng, cache, session | Bind mount |
-| `backup/` | Bản dump cơ sở dữ liệu | Bind mount |
-| `logs/` | Log của từng dịch vụ | Bind mount |
-| `moodle_db_data` | Dữ liệu MySQL | Named volume |
-| `caddy_data`, `caddy_config` | Chứng chỉ và cấu hình Caddy | Named volume |
+| `moodle/` | Moodle source | Bind mount |
+| `moodledata/` | User files, cache, sessions | Bind mount |
+| `backup/` | Database dumps | Bind mount |
+| `logs/` | Per-service logs | Bind mount |
+| `moodle_db_data` | MySQL data | Named volume |
+| `caddy_data`, `caddy_config` | Caddy certificates and config | Named volume |
 
-Không có dịch vụ khởi tạo riêng: mỗi container tự tạo thư mục và đặt quyền trong
-entrypoint, nên xóa image không làm mất bước khởi tạo. Tổng cộng năm image.
+There is no separate init service: each container creates its directories and
+sets permissions in its entrypoint, so removing images does not skip the
+initialization step. Five images in total.
 
-## Yêu cầu
+## Requirements
 
-| Hạng mục | Tối thiểu | Khuyến nghị |
+| Item | Minimum | Recommended |
 |---|---|---|
-| Hệ điều hành | Ubuntu 22.04 hoặc Debian 12 | Ubuntu 24.04 LTS |
-| Docker | Engine 24 kèm Compose v2 | Bản mới nhất |
+| Operating system | Ubuntu 22.04 or Debian 12 | Ubuntu 24.04 LTS |
+| Docker | Engine 24 with Compose v2 | Latest release |
 | CPU | 2 vCPU | 4 vCPU |
 | RAM | 4 GB | 8 GB |
-| Ổ đĩa | 50 GB SSD | 100 GB NVMe |
-| Tên miền | Không bắt buộc khi chạy thử | Bắt buộc khi chạy production |
+| Disk | 50 GB SSD | 100 GB NVMe |
+| Domain | Optional for a trial run | Required in production |
 
-## Cài đặt
+## Installation
 
-### 1. Cấu hình môi trường
+### 1. Configure the environment
 
 ```bash
 cp .env.example .env
 chmod 600 .env
 ```
 
-Tệp phải thuộc tài khoản triển khai. Nếu được tạo bằng `sudo`, đổi lại owner
-trước khi chạy Compose:
+The file must belong to the deployment account. If it was created with `sudo`,
+change the owner back before running Compose:
 
 ```bash
 sudo chown "$USER":"$USER" .env
 chmod 600 .env
 ```
 
-| Biến | Ý nghĩa |
+| Variable | Meaning |
 |---|---|
-| `MYSQL_ROOT_PASSWORD` | Mật khẩu root MySQL, chỉ dùng nội bộ |
-| `MOODLE_DB_NAME` | Tên cơ sở dữ liệu |
-| `MOODLE_DB_USER` | Tài khoản MySQL dành cho Moodle |
-| `MOODLE_DB_PASSWORD` | Mật khẩu của tài khoản trên |
-| `REDIS_PASSWORD` | Mật khẩu Redis |
-| `TZ` | Múi giờ, mặc định `Asia/Ho_Chi_Minh` |
+| `MYSQL_ROOT_PASSWORD` | MySQL root password, internal use only |
+| `MOODLE_DB_NAME` | Database name |
+| `MOODLE_DB_USER` | MySQL account used by Moodle |
+| `MOODLE_DB_PASSWORD` | Password for that account |
+| `REDIS_PASSWORD` | Redis password |
+| `TZ` | Time zone, defaults to `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
-| `PUID`, `PGID` | Không bắt buộc, dùng khi cần ép UID/GID |
-| `APACHE_MAX_REQUEST_WORKERS`, `PHP_FPM_MAX_CHILDREN` | Số worker, mặc định tự tính; xem mục **Worker và PHP-FPM** |
-| `COMPOSE_PROJECT_NAME` | Giữ tên volume và network ổn định |
+| `PUID`, `PGID` | Optional, used to force a specific UID/GID |
+| `APACHE_MAX_REQUEST_WORKERS`, `PHP_FPM_MAX_CHILDREN` | Worker counts, computed automatically by default; see **Workers and PHP-FPM** |
+| `COMPOSE_PROJECT_NAME` | Keeps volume and network names stable |
 
-### 2. Đặt mã nguồn Moodle
+### 2. Place the Moodle source
 
-Giải nén Moodle 5.x vào `moodle/`, giữ lại `config.php` nếu đã có:
+Unpack Moodle 5.x into `moodle/`, keeping an existing `config.php`:
 
 ```bash
 mkdir -p moodle
@@ -103,23 +109,23 @@ $CFG->dataroot  = '/var/www/moodledata';
 $CFG->directorypermissions = 0755;
 ```
 
-### 3. Tải image và khởi động
+### 3. Pull images and start
 
 ```bash
 docker compose pull db redis cron
 docker compose up -d --build
 ```
 
-Ba image nền (`mysql:9`, `redis:latest`, `mcuadros/ofelia:latest`) được pull; hai
-dịch vụ `moodle` và `caddy` build từ `./php` và `./caddy`. Lần chạy đầu mất 2 đến
-10 phút vì phải khởi tạo MySQL, build image, chạy `composer install` và đăng ký
-tác vụ Ofelia.
+Three base images (`mysql:9`, `redis:latest`, `mcuadros/ofelia:latest`) are
+pulled; `moodle` and `caddy` are built from `./php` and `./caddy`. The first run
+takes 2 to 10 minutes because it initializes MySQL, builds images, runs
+`composer install` and registers the Ofelia jobs.
 
-### 4. Cài đặt Moodle
+### 4. Install Moodle
 
-Mở `http://<địa-chỉ-máy-chủ>` và làm theo trình cài đặt:
+Open `http://<server-address>` and follow the installer:
 
-| Trường | Giá trị |
+| Field | Value |
 |---|---|
 | Database host | `db` |
 | Database name | `MOODLE_DB_NAME` |
@@ -127,135 +133,140 @@ Mở `http://<địa-chỉ-máy-chủ>` và làm theo trình cài đặt:
 | Database password | `MOODLE_DB_PASSWORD` |
 | Data directory | `/var/www/moodledata` |
 
-### 5. Cấu hình Redis
+### 5. Configure Redis
 
-Vào **Site administration → Plugins → Caching → Configuration**, thêm instance
-Redis với server `redis` và mật khẩu trong `.env`, rồi gán cho **Application** và
-**Session**. Kiểm tra:
+Go to **Site administration → Plugins → Caching → Configuration**, add a Redis
+instance with server `redis` and the password from `.env`, then assign it to
+**Application** and **Session**. Verify:
 
 ```bash
 docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping'
 ```
 
-Kết quả mong đợi: `PONG`.
+Expected result: `PONG`.
 
-## Phân quyền
+## Permissions
 
-Hệ thống không dùng `chmod 777`. Quyền được xử lý bằng cách đồng nhất UID giữa
-tài khoản triển khai và `www-data` trong container: entrypoint đọc owner của
-`./moodle` và `./moodledata` rồi chỉnh `www-data` cho khớp. Owner `root` và UID
-hệ thống nhỏ hơn 1000 không được dùng làm căn cứ; trường hợp đó áp dụng 1000.
+The system does not use `chmod 777`. Permissions are handled by aligning the UID
+of the deployment account with `www-data` in the container: the entrypoint reads
+the owner of `./moodle` and `./moodledata` and adjusts `www-data` to match. An
+owner of `root` or a system UID below 1000 is not used as a basis; in that case
+1000 is applied.
 
-| Đường dẫn | Owner | Quyền của tài khoản triển khai |
+| Path | Owner | Rights of the deployment account |
 |---|---|---|
-| `moodle/`, `moodledata/` | tài khoản triển khai | Đọc, ghi, xóa |
-| `logs/caddy`, `logs/moodle`, `logs/php` | tài khoản triển khai | Đọc, ghi, xóa |
-| `logs/mysql`, `logs/redis` | user dịch vụ, group tài khoản triển khai | Đọc, xóa |
-| `backup/` | tài khoản triển khai | Đọc, ghi, xóa |
+| `moodle/`, `moodledata/` | deployment account | Read, write, delete |
+| `logs/caddy`, `logs/moodle`, `logs/php` | deployment account | Read, write, delete |
+| `logs/mysql`, `logs/redis` | service user, deployment account group | Read, delete |
+| `backup/` | deployment account | Read, write, delete |
 
-Quyền tệp tiêu chuẩn: thư mục `755`, tệp `644`. `$CFG->directorypermissions =
-0755` để Moodle không tạo thư mục ghi cho mọi tài khoản. Khi cần ép UID/GID khác,
-điền `PUID` và `PGID` trong `.env` rồi chạy `docker compose up -d --build`.
+Standard file modes: directories `755`, files `644`. `$CFG->directorypermissions
+= 0755` keeps Moodle from creating world-writable directories. To force a
+different UID/GID, set `PUID` and `PGID` in `.env` and run `docker compose up -d
+--build`.
 
-`docker exec` mặc định chạy bằng `root`, nên các lệnh PHP cần thêm `-u www-data`
-để tệp cache không thuộc `root`:
+`docker exec` runs as `root` by default, so PHP commands need `-u www-data` to
+keep cache files from being owned by `root`:
 
 ```bash
 docker exec -it -u www-data moodle_web bash
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-Nếu đã có tệp thuộc `root`, chuẩn hóa lại bằng `bash scripts/fix-perms.sh`.
+If files are already owned by `root`, normalize them with `bash
+scripts/fix-perms.sh`.
 
-## Vận hành
+## Operations
 
-### Backup và phục hồi
+### Backup and restore
 
 ```bash
-bash scripts/db-backup.sh            # tạo backup/moodle_<thời-gian>.sql và moodle_latest.sql
-bash scripts/db-restore.sh <tệp.sql> # phục hồi, có bước xác nhận
+bash scripts/db-backup.sh             # writes backup/moodle_<time>.sql and moodle_latest.sql
+bash scripts/db-restore.sh <file.sql> # restore, with a confirmation step
 ```
 
-Ofelia chạy `mysqldump` hằng ngày và ghi đè `backup/moodle_latest.sql`. Bản
-backup nằm cùng máy chủ nên cần đồng bộ ra ngoài bằng rsync, rclone hoặc lưu trữ
-đối tượng.
+Ofelia runs `mysqldump` daily and overwrites `backup/moodle_latest.sql`. The
+backup lives on the same server, so sync it elsewhere with rsync, rclone or
+object storage.
 
-### Chạy offline bằng image
+### Offline install from images
 
-Dùng khi máy chủ mới không có Internet:
+Use this when the new server has no Internet access:
 
 ```bash
-# Trên máy đang chạy ổn định
+# On a healthy running host
 mkdir -p backup/images
 docker save $(docker compose config --images) \
   | gzip -6 > backup/images/moodle-images.tar.gz
 
-# Trên máy mới, sau khi đã sao chép mã nguồn, moodledata, .env và backup/
+# On the new host, after copying source, moodledata, .env and backup/
 gunzip -c backup/images/moodle-images.tar.gz | docker load
 docker compose up -d --no-build
 ```
 
-Hoặc dùng `sh scripts/images-save.sh` và `sh scripts/images-load.sh`. Tệp image
-chỉ chứa image Docker, không chứa `moodle/`, `moodledata/`, `.env` hay dữ liệu
-MySQL; phải sao chép các phần đó và `backup/moodle_latest.sql` riêng. Tên image
-đã cố định là `moodle-server-moodle:latest` và `moodle-caddy:latest` nên thư mục
-dự án có thể đặt tên bất kỳ.
+Or use `sh scripts/images-save.sh` and `sh scripts/images-load.sh`. The archive
+holds only Docker images, not `moodle/`, `moodledata/`, `.env` or MySQL data;
+copy those and `backup/moodle_latest.sql` separately. Image names are fixed as
+`moodle-server-moodle:latest` and `moodle-caddy:latest`, so the project
+directory can have any name.
 
-### Log
+### Logs
 
-| Dịch vụ | Đường dẫn | Định dạng |
+| Service | Path | Format |
 |---|---|---|
-| Caddy | `logs/caddy/access.log` | JSON, xoay nội bộ 100 MB, giữ 30 tệp |
-| Apache | `logs/moodle/access-YYYY-MM-DD.log` | Tách theo ngày |
-| PHP | `logs/php/error-YYYY-MM-DD.log` | Tách theo ngày |
-| MySQL | `logs/mysql/error.log` | Chỉ log lỗi |
-| Redis | `logs/redis/redis.log` | Mức notice |
+| Caddy | `logs/caddy/access.log` | JSON, 100 MB internal rotation, 30 files kept |
+| Apache | `logs/moodle/access-YYYY-MM-DD.log` | Split by day |
+| PHP | `logs/php/error-YYYY-MM-DD.log` | Split by day |
+| MySQL | `logs/mysql/error.log` | Errors only |
+| Redis | `logs/redis/redis.log` | Notice level |
 
-`scripts/log-rotate.sh` chạy lúc 0 giờ mỗi ngày và giữ log trong 30 ngày. Log
-của Docker engine giới hạn 10 MB mỗi tệp, tối đa 3 tệp cho mỗi container.
+`scripts/log-rotate.sh` runs at midnight each day and keeps logs for 30 days.
+Docker engine logs are capped at 10 MB per file, up to 3 files per container.
 
 ### Cron
 
-Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản triển khai, với
-`--keep-alive=0` để mỗi lần chạy kết thúc ngay sau khi xử lý task. Service `cron`
-giới hạn 256 MB và `restart: always` sẽ khởi động lại nếu vượt giới hạn.
+Ofelia runs `admin/cli/cron.php` every minute as the deployment account's UID,
+with `--keep-alive=0` so each run exits as soon as it finishes its tasks. The
+`cron` service is limited to 256 MB and `restart: always` restarts it if it
+exceeds that.
 
-### Vá usermenu
+### usermenu patch
 
-Sau khi cài hoặc nâng cấp, chạy script để vá usermenu:
+After install or upgrade, run the patch script:
 
 ```bash
 bash scripts/patch-usermenu.sh
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-Script lưu bản gốc vào `backup/usermenu-patch/` và không ghi đè nếu mã nguồn đã
-thay đổi.
+The script stores originals in `backup/usermenu-patch/` and refuses to overwrite
+if the source has changed.
 
-### Tệp .htaccess của webroot
+### Webroot .htaccess
 
-`moodle/public/.htaccess` được giữ trong repo vì tệp bật router `r.php`, chặn
-tải `install.xml`, `environment.xml`, `roles_schema.xml`, `*.schema.json` và các
-thư mục `lib/db`, `lib/tests`, `lib/phpunit`.
+`moodle/public/.htaccess` is kept in the repo because it enables the `r.php`
+router and blocks downloads of `install.xml`, `environment.xml`,
+`roles_schema.xml`, `*.schema.json` and the `lib/db`, `lib/tests`, `lib/phpunit`
+directories.
 
-Khi giải nén bản Moodle mới, tệp có thể bị ghi đè bằng bản mặc định. Khôi phục
-bản trong repo rồi kiểm tra:
+Unpacking a new Moodle release can overwrite it with the default file. Restore
+the repo copy and verify:
 
 ```bash
 git checkout -- moodle/public/.htaccess
-install -m 644 moodle/public/.htaccess /duong-dan/moodle/public/.htaccess
+install -m 644 moodle/public/.htaccess /path/to/moodle/public/.htaccess
 docker exec moodle_web apache2ctl -t
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost/theme/boost/style/moodle.css
 ```
 
-### Nhập gói ngôn ngữ tùy chỉnh
+### Import a custom language pack
 
-Mở thẳng `/admin/tool/customlang/import.php?lng=vi` để vào form nhập ZIP. Mục
-Import trên menu chạy checkout trước nên với gói lớn có thể mất vài phút; PHP-FPM
-và Apache cho phép tối đa 900 giây cho một request và mỗi tab đang mở đều có thể
-chạy lại checkout, nên chỉ mở một tab.
+Open `/admin/tool/customlang/import.php?lng=vi` directly to reach the ZIP upload
+form. The Import item on the menu runs a checkout first, so large packs can take
+minutes; PHP-FPM and Apache allow up to 900 seconds per request, and every open
+tab can start another checkout, so keep a single tab open.
 
-### Lệnh thường dùng
+### Common commands
 
 ```bash
 docker compose ps
@@ -265,119 +276,122 @@ docker compose down
 docker compose up -d
 ```
 
-### Dọn dẹp
+### Cleanup
 
-`docker system prune -a` xóa image không dùng và container đã dừng, không ảnh
-hưởng volume dữ liệu; sau đó chạy lại `docker compose up -d --build`. Hai lệnh
-sau xóa cả dữ liệu và chỉ dùng khi đã có backup:
+`docker system prune -a` removes unused images and stopped containers without
+touching data volumes; run `docker compose up -d --build` afterwards. The next
+two commands delete data as well and are only safe when a backup exists:
 
 ```bash
 docker compose down -v
 docker system prune -a --volumes
 ```
 
-## TLS và tên miền
+## TLS and domain
 
-Trong `Caddyfile`, thay `:80` bằng tên miền:
+In `Caddyfile`, replace `:80` with your domain:
 
 ```text
 lms.example.vn {
 ```
 
-Caddy tự xin và gia hạn chứng chỉ Let's Encrypt. Sau khi đổi, cập nhật
-`$CFG->wwwroot`, bật `$CFG->sslproxy = true` nếu chạy sau proxy, chạy công cụ
-thay URL trong cơ sở dữ liệu và xóa cache; quy trình đầy đủ nằm trong tài liệu
-đổi domain.
+Caddy obtains and renews Let's Encrypt certificates automatically. After the
+change, update `$CFG->wwwroot`, set `$CFG->sslproxy = true` when running behind a
+proxy, run the URL replacement tool against the database and purge caches; the
+full procedure is in the domain change guide.
 
-## Bảo mật
+## Security
 
-- Chỉ mở cổng 22, 80 và 443. MySQL và Redis không mở ra Internet.
-- Đăng nhập SSH bằng khóa, tắt xác thực mật khẩu và đăng nhập `root`.
-- `.env` có quyền `600`; ba mật khẩu MySQL root, MySQL ứng dụng và Redis phải
-  khác nhau.
-- `config.php` đọc mật khẩu cơ sở dữ liệu từ `MOODLE_DB_PASSWORD`, không lưu
-  mật khẩu trong tệp.
-- Caddy gửi `Strict-Transport-Security` khi dùng HTTPS, `Content-Security-Policy`,
-  `X-Content-Type-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy`,
-  `Permissions-Policy` và ẩn header `Server`. Apache bật `ServerTokens Prod` và
-  `ServerSignature Off` nên không lộ phiên bản trong header hoặc trang lỗi.
-- Caddy giới hạn 30 yêu cầu `POST` mỗi phút cho mỗi IP trên `/login/index.php` và
-  `/login/token.php`, bổ sung cho chính sách khóa tài khoản của Moodle.
-- Webroot không lộ schema hay thư mục phát triển, nhờ
-  `moodle/public/.htaccess` (xem mục **Tệp .htaccess của webroot**).
-- Bật cập nhật bảo mật tự động cho hệ điều hành và kiểm tra định kỳ.
-- Duy trì backup ngoài máy chủ và kiểm tra khả năng phục hồi.
+- Only ports 22, 80 and 443 are open. MySQL and Redis are not exposed to the
+  Internet.
+- SSH uses key authentication; password login and `root` login are disabled.
+- `.env` is mode `600`; the three passwords (MySQL root, MySQL application,
+  Redis) must differ.
+- `config.php` reads the database password from `MOODLE_DB_PASSWORD` and stores
+  no password itself.
+- Caddy sends `Strict-Transport-Security` over HTTPS,
+  `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Cross-Origin-Opener-Policy`, `Permissions-Policy` and hides the `Server`
+  header. Apache sets `ServerTokens Prod` and `ServerSignature Off`, so no
+  version leaks in headers or error pages.
+- Caddy limits `POST` requests to 30 per minute per IP on `/login/index.php` and
+  `/login/token.php`, complementing Moodle's account lockout policy.
+- The webroot exposes no schema files or development directories, thanks to
+  `moodle/public/.htaccess` (see **Webroot .htaccess**).
+- Enable automatic security updates on the OS and check them regularly.
+- Keep backups off the server and test restores.
 
-## Cấu hình
+## Configuration
 
 ### MySQL
 
-`db` chạy với `--innodb-flush-log-at-trx-commit=2` và `--sync-binlog=0` để các
-tác vụ ghi hàng loạt không phải chờ `fsync` sau từng câu lệnh; checkout gói ngôn
-ngữ giảm từ khoảng 320 giây xuống 25 giây. Đánh đổi: mất điện hoặc kernel panic
-có thể mất tối đa một giây giao dịch vừa commit, dữ liệu vẫn nhất quán. Cần độ
-bền tuyệt đối thì bỏ hai tham số này.
+`db` runs with `--innodb-flush-log-at-trx-commit=2` and `--sync-binlog=0` so
+bulk writes do not wait for `fsync` after every statement; a language pack
+checkout drops from about 320 seconds to 25 seconds. Trade-off: a power loss or
+kernel panic can lose up to one second of committed transactions, while data
+stays consistent. Remove both flags if you need absolute durability.
 
-Về log, MySQL chỉ bật `--log-error` để ghi lỗi vào `logs/mysql/error.log`. Khi
-cần tìm truy vấn chậm, thêm tạm vào `command:` của `db`:
+For logging, MySQL enables only `--log-error`, writing errors to
+`logs/mysql/error.log`. To hunt slow queries, temporarily append to the `db`
+`command:`:
 
 ```text
 --slow-query-log=1 --slow-query-log-file=/var/log/mysql/slow.log --long-query-time=2
 ```
 
-### Worker và PHP-FPM
+### Workers and PHP-FPM
 
-Entrypoint tính `MaxRequestWorkers` theo công thức:
+The entrypoint computes `MaxRequestWorkers` as:
 
 ```text
-min(nproc * 16, (RAM_khả_dụng - dự_phòng) / 64 MB, 150)
+min(nproc * 16, (available_RAM - reserve) / 64 MB, 150)
 ```
 
-Dự phòng 1,5 GB cho host 4 GB và 2 GB cho host 8 GB. Đây là số thread của
-`mpm_event`, không phải số tiến trình: `ThreadsPerChild = 10`, `ServerLimit =
-ceil(worker / 10)` và làm tròn lên bội số 10, nên 40 worker là 4 tiến trình
-Apache. PHP-FPM mặc định `pm.max_children = 24`, đặt bằng `PHP_FPM_MAX_CHILDREN`
-và không vượt quá số worker Apache; các tham số còn lại là `pm.start_servers =
-2 * nproc`, `pm.min_spare_servers = nproc`, `pm.max_spare_servers = 4 * nproc`
-và `pm.max_requests = 500`. Container có `mem_limit` hoặc `cpus` được đọc giới
-hạn cgroup thay vì dùng toàn bộ tài nguyên host.
+The reserve is 1.5 GB on a 4 GB host and 2 GB on an 8 GB host. This is the
+`mpm_event` thread count, not the process count: `ThreadsPerChild = 10`,
+`ServerLimit = ceil(workers / 10)` rounded up to a multiple of 10, so 40 workers
+means 4 Apache processes. PHP-FPM defaults to `pm.max_children = 24`, set by
+`PHP_FPM_MAX_CHILDREN` and never above the Apache worker count; the remaining
+settings are `pm.start_servers = 2 * nproc`, `pm.min_spare_servers = nproc`,
+`pm.max_spare_servers = 4 * nproc` and `pm.max_requests = 500`. Containers with
+`mem_limit` or `cpus` read the cgroup limit instead of using all host resources.
 
-RAM thực tế do PHP-FPM quyết định vì mỗi worker là một tiến trình; event MPM chỉ
-giảm overhead của Apache. Trên máy 4 GB nên giữ `APACHE_MAX_REQUEST_WORKERS=40`,
-`PHP_FPM_MAX_CHILDREN=24` và theo dõi bộ nhớ trước khi tăng.
+Actual RAM use is driven by PHP-FPM because each worker is a process; event MPM
+only reduces Apache overhead. On a 4 GB machine keep
+`APACHE_MAX_REQUEST_WORKERS=40` and `PHP_FPM_MAX_CHILDREN=24`, and watch memory
+before raising them.
 
-### Theo tải
+### Sizing by load
 
-| Hạng mục | Khoảng 100 người dùng đồng thời | Khoảng 1000 người dùng đồng thời |
+| Item | Around 100 concurrent users | Around 1000 concurrent users |
 |---|---|---|
 | CPU / RAM | 4 vCPU / 8 GB | 16 vCPU / 64 GB |
-| Ổ đĩa | 100 GB | 500 GB |
-| Mô hình | Một máy chủ | Một máy chủ lớn, hoặc tách web và cơ sở dữ liệu |
+| Disk | 100 GB | 500 GB |
+| Model | Single server | One large server, or split web and database |
 
-| Tham số | 100 người dùng | 1000 người dùng | Vị trí |
+| Setting | 100 users | 1000 users | Location |
 |---|---|---|---|
-| `innodb_buffer_pool_size` | 2 GB | 16 đến 24 GB | `command:` của `db` |
-| Redis `maxmemory` | 256 đến 512 MB | 2 GB | `command:` của `redis` |
+| `innodb_buffer_pool_size` | 2 GB | 16 to 24 GB | `db` `command:` |
+| Redis `maxmemory` | 256 to 512 MB | 2 GB | `redis` `command:` |
 | `opcache.memory_consumption` | 256 MB | 512 MB | `php/Dockerfile` |
-| Apache `MaxRequestWorkers` (thread) | tự động 32–64 | 300 đến 500 | `APACHE_MAX_REQUEST_WORKERS` trong `.env` |
-| PHP-FPM `pm.max_children` | 24 (mặc định) | 300 đến 500 | `PHP_FPM_MAX_CHILDREN` trong `.env` |
+| Apache `MaxRequestWorkers` (threads) | automatic 32–64 | 300 to 500 | `APACHE_MAX_REQUEST_WORKERS` in `.env` |
+| PHP-FPM `pm.max_children` | 24 (default) | 300 to 500 | `PHP_FPM_MAX_CHILDREN` in `.env` |
 
-Khi vượt ngưỡng, tách MySQL sang máy chủ riêng bằng cách đổi host cơ sở dữ liệu,
-sau đó nhân bản container `moodle` phía sau bộ cân bằng tải.
+When you outgrow one host, move MySQL to its own server by changing the database
+host, then replicate the `moodle` container behind a load balancer.
 
-## Tài liệu
+## Documentation
 
-Bộ tài liệu tiếng Việt trong thư mục `docs/` (không đưa vào kho):
+The guides in `docs/` are written in Vietnamese and are not part of the repo:
 
-| Tệp | Nội dung |
+| File | Contents |
 |---|---|
-| `HƯỚNG DẪN TRIỂN KHAI HỆ THỐNG LMS.md` | Triển khai từ máy chủ trống đến production |
-| `HƯỚNG DẪN THAY ĐỔI DOMAIN HỆ THỐNG LMS.md` | Đổi địa chỉ truy cập và bật HTTPS |
-| `HƯỚNG DẪN NÂNG CẤP HỆ THỐNG LMS.md` | Nâng cấp phiên bản, kiểm tra và quay lui |
-| `HƯỚNG DẪN DI TRÚ HỆ THỐNG LMS.md` | Chuyển hệ thống sang máy chủ mới |
-| `CẤU TRÚC VÀ CẤU HÌNH HỆ THỐNG.md` | Cấu trúc thư mục và toàn bộ tệp cấu hình để phục dựng |
+| `HƯỚNG DẪN TRIỂN KHAI HỆ THỐNG LMS.md` | Deploy from an empty server to production |
+| `HƯỚNG DẪN THAY ĐỔI DOMAIN HỆ THỐNG LMS.md` | Change the access address and enable HTTPS |
+| `HƯỚNG DẪN NÂNG CẤP HỆ THỐNG LMS.md` | Upgrade versions, verify, and roll back |
+| `HƯỚNG DẪN DI TRÚ HỆ THỐNG LMS.md` | Move the system to a new server |
+| `CẤU TRÚC VÀ CẤU HÌNH HỆ THỐNG.md` | Directory layout and all configuration files for rebuilding |
 
-## Giấy phép
+## License
 
-PolyForm Noncommercial 1.0.0. Xem `LICENSE-EE.md`. Chỉ sử dụng cho mục đích
-phi thương mại.
+PolyForm Noncommercial 1.0.0. See `LICENSE-EE.md`. Noncommercial use only.
