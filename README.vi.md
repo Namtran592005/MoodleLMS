@@ -44,17 +44,6 @@ Dữ liệu được phân bố như sau:
 Không có dịch vụ khởi tạo riêng: mỗi container tự tạo thư mục và đặt quyền trong
 entrypoint, nên xóa image không làm mất bước khởi tạo. Tổng cộng năm image.
 
-## Yêu cầu
-
-| Hạng mục | Tối thiểu | Khuyến nghị |
-|---|---|---|
-| Hệ điều hành | Ubuntu 22.04 hoặc Debian 12 | Ubuntu 24.04 LTS |
-| Docker | Engine 24 kèm Compose v2 | Bản mới nhất |
-| CPU | 2 vCPU | 4 vCPU |
-| RAM | 4 GB | 8 GB |
-| Ổ đĩa | 50 GB SSD | 100 GB NVMe |
-| Tên miền | Không bắt buộc khi chạy thử | Bắt buộc khi chạy production |
-
 ## Cài đặt
 
 ### 1. Cấu hình môi trường
@@ -352,6 +341,8 @@ giảm overhead của Apache. Trên máy 4 GB nên giữ `APACHE_MAX_REQUEST_WOR
 
 | Hạng mục | Khoảng 100 người dùng đồng thời | Khoảng 1000 người dùng đồng thời |
 |---|---|---|
+| Hệ điều hành | Ubuntu 26.04 LTS | Ubuntu 26.04 LTS |
+| Docker | Engine 24 kèm Compose v2 | Engine 24 kèm Compose v2 |
 | CPU / RAM | 4 vCPU / 8 GB | 16 vCPU / 64 GB |
 | Ổ đĩa | 100 GB | 500 GB |
 | Mô hình | Một máy chủ | Một máy chủ lớn, hoặc tách web và cơ sở dữ liệu |

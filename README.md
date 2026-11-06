@@ -48,17 +48,6 @@ There is no separate init service: each container creates its directories and
 sets permissions in its entrypoint, so removing images does not skip the
 initialization step. Five images in total.
 
-## Requirements
-
-| Item | Minimum | Recommended |
-|---|---|---|
-| Operating system | Ubuntu 22.04 or Debian 12 | Ubuntu 24.04 LTS |
-| Docker | Engine 24 with Compose v2 | Latest release |
-| CPU | 2 vCPU | 4 vCPU |
-| RAM | 4 GB | 8 GB |
-| Disk | 50 GB SSD | 100 GB NVMe |
-| Domain | Optional for a trial run | Required in production |
-
 ## Installation
 
 ### 1. Configure the environment
@@ -365,6 +354,8 @@ before raising them.
 
 | Item | Around 100 concurrent users | Around 1000 concurrent users |
 |---|---|---|
+| Operating system | Ubuntu 26.04 LTS | Ubuntu 26.04 LTS |
+| Docker | Engine 24 with Compose v2 | Engine 24 with Compose v2 |
 | CPU / RAM | 4 vCPU / 8 GB | 16 vCPU / 64 GB |
 | Disk | 100 GB | 500 GB |
 | Model | Single server | One large server, or split web and database |
