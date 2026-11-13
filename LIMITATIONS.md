@@ -3,16 +3,16 @@
 **English** | [Tiếng Việt](LIMITATIONS.vi.md)
 
 An honest list of what this deployment does not do. Severity reflects the impact
-when the problem happens in production, not how likely it is. The three highest
-risks include a proposed fix; nothing in this file has been applied, so the
-stack still runs exactly as before.
+when the problem happens in production, not how likely it is. The two remaining
+highest risks include a proposed fix; the Redis volume was fixed on 2026-11-13.
+Everything else here is unchanged, so the stack still runs as before.
 
 ## The three highest risks
 
 | # | Risk | Why it matters |
 |---|---|---|
 | 1 | `moodledata/` is not backed up | User files, submissions and uploads exist only on this disk |
-| 2 | Redis has no data volume | Recreating the container logs every user out |
+| 2 | Redis data volume — fixed 2026-11-13 | Was: recreating the container logged every user out |
 | 3 | Backups share the server disk and never expire | Disk failure loses both data and copies; the folder grows without bound |
 
 ## Architecture
@@ -37,7 +37,6 @@ stack still runs exactly as before.
 | Backup files never pruned | `backup/` grows until the disk is full | Medium |
 | Restore never rehearsed | Real RTO unknown; likely 30 to 60 minutes | Medium |
 | `innodb-flush-log-at-trx-commit=2`, `sync-binlog=0` | Up to one second of committed transactions lost on power failure | Medium |
-| Redis data lives in the container layer | `down`/`up` or a rebuild discards sessions and cache | Medium |
 | No MySQL replica | No second copy to read from or promote | Medium |
 
 ## Performance
@@ -95,8 +94,9 @@ structural changes, not tuning:
 
 For a lab, a demo or a small deployment under about 100 users, most of these are
 reasonable trade-offs for a stack that starts with one command. The items worth
-fixing even at small scale are the three above. Everything else can wait until
-the deployment grows or the data becomes valuable.
+fixing even at small scale are the ones marked High above, starting with the two
+backup risks. Everything else can wait until the deployment grows or the data
+becomes valuable.
 
 ## Fix 1: back up `moodledata`
 
@@ -145,13 +145,17 @@ tar -tzf backup/moodledata_YYYY-MM-DD_HH-MM.tar.gz | wc -l
 compression costs CPU during the backup window. If it grows past a few GB,
 switch to `rsync --link-dest` snapshots so unchanged files are hard-linked.
 
-## Fix 2: give Redis a data volume
+## Fix 2: give Redis a data volume (applied)
 
-**Current state.** AOF is enabled (`appendonly yes`) but `/data` is not mounted.
-The AOF file sits in the container layer, so `docker compose down` followed by
-`up`, or any rebuild, discards it. Users are logged out and caches are cold.
+**Status.** Applied on 2026-11-13. `redis_data` is mounted at `/data`; a test key
+survived `docker compose up -d --force-recreate redis`, and the site returned
+200. The text below records what was done.
 
-**Proposed change.** In `docker-compose.yml`:
+**Before.** AOF was enabled (`appendonly yes`) but `/data` was not mounted. The
+AOF file sat in the container layer, so `docker compose down` followed by `up`,
+or any rebuild, discarded it. Users were logged out and caches went cold.
+
+**Change.** In `docker-compose.yml`:
 
 ```yaml
 services:
@@ -164,19 +168,22 @@ volumes:
   redis_data:
 ```
 
-Then recreate the service once:
+Applied by recreating the service once:
 
 ```bash
 docker compose up -d redis
 ```
 
-**Verify.** Write a key, restart, read it back:
+**Verify.** Write a key, recreate the container, read it back:
 
 ```bash
-docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli set healthcheck ok'
-docker compose restart redis
-docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli get healthcheck'
+docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli set volume_check ok'
+docker compose up -d --force-recreate redis
+docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli get volume_check'
 ```
+
+The second command must print `ok`. A plain restart is not enough as a test, because
+it keeps the same container and would pass even without a volume.
 
 **Trade-offs.** The volume is deleted by `docker compose down -v`, which is
 correct: sessions and cache are disposable. It does not remove the need for a

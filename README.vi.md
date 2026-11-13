@@ -41,6 +41,7 @@ Dữ liệu được phân bố như sau:
 | `backup/` | Bản dump cơ sở dữ liệu | Bind mount |
 | `logs/` | Log của từng dịch vụ | Bind mount |
 | `moodle_db_data` | Dữ liệu MySQL | Named volume |
+| `redis_data` | Dữ liệu Redis (AOF), session và cache | Named volume |
 | `caddy_data`, `caddy_config` | Chứng chỉ và cấu hình Caddy | Named volume |
 
 Không có dịch vụ khởi tạo riêng: mỗi container tự tạo thư mục và đặt quyền trong

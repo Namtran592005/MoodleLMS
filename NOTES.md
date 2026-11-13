@@ -327,7 +327,7 @@ The full analysis is in [LIMITATIONS.md](LIMITATIONS.md). In short:
 
 - One host only: no failover, no zero-downtime upgrade.
 - `moodledata/` is not backed up, and dumps share the server disk.
-- Redis has no data volume; recreating the container logs users out.
+- Redis keeps its AOF in `redis_data`; `down -v` still clears sessions.
 - No monitoring or alerting; users notice failures first.
 - Mutable image tags make rebuilds non-reproducible.
 - Upgrades are manual and the usermenu patch can break them.

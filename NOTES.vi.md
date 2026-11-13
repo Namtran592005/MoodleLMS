@@ -323,7 +323,7 @@ Phân tích đầy đủ nằm trong [LIMITATIONS.vi.md](LIMITATIONS.vi.md). Tó
 
 - Chỉ một máy chủ: không failover, không nâng cấp không gián đoạn.
 - `moodledata/` không được sao lưu, bản dump nằm cùng ổ đĩa máy chủ.
-- Redis không có volume dữ liệu; tạo lại container là người dùng bị đăng xuất.
+- Redis giữ AOF trong `redis_data`; `down -v` vẫn xóa session.
 - Không monitoring, không alert; người dùng phát hiện lỗi trước.
 - Thẻ image động nên rebuild không tái lập được.
 - Nâng cấp thủ công và bản vá usermenu có thể làm hỏng.

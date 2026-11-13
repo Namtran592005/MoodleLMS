@@ -3,16 +3,16 @@
 [English](LIMITATIONS.md) | **Tiếng Việt**
 
 Danh sách thẳng thắn những gì bản triển khai này chưa làm được. Mức độ phản ánh
-hậu quả khi sự cố xảy ra trong vận hành thật, không phải khả năng xảy ra. Ba rủi ro
-lớn nhất có kèm cách sửa đề xuất; chưa có thay đổi nào được áp dụng, hệ thống vẫn
-chạy y như trước.
+hậu quả khi sự cố xảy ra trong vận hành thật, không phải khả năng xảy ra. Hai rủi ro
+lớn nhất còn lại có kèm cách sửa đề xuất; phần volume Redis đã sửa ngày 13-11-2026.
+Các mục khác giữ nguyên, hệ thống vẫn chạy như trước.
 
 ## Ba rủi ro lớn nhất
 
 | # | Rủi ro | Vì sao quan trọng |
 |---|---|---|
 | 1 | `moodledata/` không được sao lưu | Tệp người dùng, bài nộp, ảnh chỉ tồn tại trên ổ đĩa này |
-| 2 | Redis không có volume dữ liệu | Tạo lại container là mọi người bị đăng xuất |
+| 2 | Volume Redis — đã sửa 13-11-2026 | Trước đây: tạo lại container là mọi người bị đăng xuất |
 | 3 | Backup nằm cùng ổ đĩa và không bao giờ hết hạn | Hỏng đĩa là mất cả dữ liệu lẫn bản sao; thư mục tăng vô hạn |
 
 ## Kiến trúc
@@ -37,7 +37,6 @@ chạy y như trước.
 | Bản backup không bao giờ được dọn | `backup/` tăng tới khi đầy ổ | Trung bình |
 | Chưa từng diễn tập phục hồi | RTO thực tế chưa biết, ước tính 30 đến 60 phút | Trung bình |
 | `innodb-flush-log-at-trx-commit=2`, `sync-binlog=0` | Mất điện có thể mất tới một giây giao dịch đã commit | Trung bình |
-| Dữ liệu Redis nằm trong lớp container | `down`/`up` hoặc rebuild là mất session và cache | Trung bình |
 | Không có MySQL replica | Không có bản thứ hai để đọc hoặc nâng cấp dự phòng | Trung bình |
 
 ## Hiệu năng
@@ -95,8 +94,8 @@ Thiết kế chỉ mở rộng theo chiều dọc. Đạt khoảng 1000 người
 
 Với phòng lab, bản demo hoặc triển khai nhỏ dưới khoảng 100 người dùng, phần lớn
 đánh đổi trên là hợp lý cho một hệ thống khởi động bằng một lệnh. Những mục nên sửa
-kể cả ở quy mô nhỏ là ba mục đầu. Phần còn lại có thể chờ tới khi hệ thống lớn hơn
-hoặc dữ liệu trở nên quan trọng.
+kể cả ở quy mô nhỏ là các mục mức Cao ở trên, bắt đầu từ hai rủi ro backup. Phần
+còn lại có thể chờ tới khi hệ thống lớn hơn hoặc dữ liệu trở nên quan trọng.
 
 ## Sửa 1: sao lưu `moodledata`
 
@@ -145,13 +144,17 @@ tar -tzf backup/moodledata_YYYY-MM-DD_HH-MM.tar.gz | wc -l
 CPU trong khung giờ backup. Nếu vượt vài GB, chuyển sang snapshot bằng
 `rsync --link-dest` để tệp không đổi được hard-link.
 
-## Sửa 2: cấp volume dữ liệu cho Redis
+## Sửa 2: cấp volume dữ liệu cho Redis (đã áp dụng)
 
-**Hiện trạng.** AOF đã bật (`appendonly yes`) nhưng `/data` không được mount. Tệp
+**Trạng thái.** Đã áp dụng ngày 13-11-2026. `redis_data` được mount tại `/data`;
+một khóa kiểm tra vẫn còn sau `docker compose up -d --force-recreate redis`, và
+site trả 200. Phần dưới ghi lại việc đã làm.
+
+**Trước đây.** AOF đã bật (`appendonly yes`) nhưng `/data` không được mount. Tệp
 AOF nằm trong lớp container, nên `docker compose down` rồi `up`, hoặc bất kỳ lần
 rebuild nào, đều làm mất nó. Người dùng bị đăng xuất, cache trống.
 
-**Đề xuất.** Trong `docker-compose.yml`:
+**Thay đổi.** Trong `docker-compose.yml`:
 
 ```yaml
 services:
@@ -164,19 +167,22 @@ volumes:
   redis_data:
 ```
 
-Sau đó tạo lại service một lần:
+Đã áp dụng bằng cách tạo lại service một lần:
 
 ```bash
 docker compose up -d redis
 ```
 
-**Kiểm tra.** Ghi một khóa, restart, đọc lại:
+**Kiểm tra.** Ghi một khóa, tạo lại container, đọc lại:
 
 ```bash
-docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli set healthcheck ok'
-docker compose restart redis
-docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli get healthcheck'
+docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli set volume_check ok'
+docker compose up -d --force-recreate redis
+docker exec moodle_redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli get volume_check'
 ```
+
+Lệnh thứ hai phải in ra `ok`. Chỉ restart không đủ để kiểm tra, vì nó giữ nguyên
+container và sẽ đạt kể cả khi không có volume.
 
 **Đánh đổi.** Volume bị xóa bởi `docker compose down -v`, điều này đúng vì session
 và cache dùng xong có thể bỏ. Nó không thay thế được phương án dự phòng session

@@ -128,6 +128,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - ./logs/redis:/var/log/redis
+      - redis_data:/data
     networks:
       - moodle_net
 
@@ -212,6 +213,7 @@ volumes:
   moodle_db_data:
   caddy_data:
   caddy_config:
+  redis_data:
 
 networks:
   moodle_net:

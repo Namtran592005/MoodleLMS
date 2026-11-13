@@ -43,6 +43,7 @@ Data is laid out as follows:
 | `backup/` | Database dumps | Bind mount |
 | `logs/` | Per-service logs | Bind mount |
 | `moodle_db_data` | MySQL data | Named volume |
+| `redis_data` | Redis AOF, sessions and cache | Named volume |
 | `caddy_data`, `caddy_config` | Caddy certificates and config | Named volume |
 
 There is no separate init service: each container creates its directories and
