@@ -321,6 +321,20 @@ The container uses `TZ` from `.env`. Moodle has its own default under **Site
 administration → Location → Location settings**. Both must match, otherwise
 cron schedules and log timestamps drift.
 
+## Known limitations
+
+The full analysis is in [LIMITATIONS.md](LIMITATIONS.md). In short:
+
+- One host only: no failover, no zero-downtime upgrade.
+- `moodledata/` is not backed up, and dumps share the server disk.
+- Redis has no data volume; recreating the container logs users out.
+- No monitoring or alerting; users notice failures first.
+- Mutable image tags make rebuilds non-reproducible.
+- Upgrades are manual and the usermenu patch can break them.
+
+The three highest risks have proposed fixes in
+[LIMITATIONS.md](LIMITATIONS.md#the-three-highest-risks). None are applied.
+
 ## Maintenance checklist
 
 Weekly:

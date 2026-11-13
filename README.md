@@ -260,6 +260,7 @@ Formulas, trade-offs and per-load values are in
 ## Documentation
 
 - [NOTES.md](NOTES.md) — performance, tuning and troubleshooting.
+- [LIMITATIONS.md](LIMITATIONS.md) — known limits and proposed fixes.
 - Vietnamese guides in `docs/` (not part of the repo):
 
 | File | Contents |

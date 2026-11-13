@@ -255,6 +255,7 @@ Công thức, đánh đổi và giá trị theo tải có trong
 ## Tài liệu
 
 - [NOTES.vi.md](NOTES.vi.md) — hiệu năng, tinh chỉnh và xử lý sự cố.
+- [LIMITATIONS.vi.md](LIMITATIONS.vi.md) — giới hạn đã biết và cách sửa đề xuất.
 - Bộ tài liệu tiếng Việt trong `docs/` (không đưa vào kho):
 
 | Tệp | Nội dung |

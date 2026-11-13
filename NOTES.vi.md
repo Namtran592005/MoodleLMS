@@ -317,6 +317,20 @@ Container dùng `TZ` trong `.env`. Moodle có mặc định riêng trong **Site
 administration → Location → Location settings**. Hai nơi phải trùng nhau, nếu
 không lịch cron và mốc thời gian trong log sẽ lệch.
 
+## Giới hạn đã biết
+
+Phân tích đầy đủ nằm trong [LIMITATIONS.vi.md](LIMITATIONS.vi.md). Tóm tắt:
+
+- Chỉ một máy chủ: không failover, không nâng cấp không gián đoạn.
+- `moodledata/` không được sao lưu, bản dump nằm cùng ổ đĩa máy chủ.
+- Redis không có volume dữ liệu; tạo lại container là người dùng bị đăng xuất.
+- Không monitoring, không alert; người dùng phát hiện lỗi trước.
+- Thẻ image động nên rebuild không tái lập được.
+- Nâng cấp thủ công và bản vá usermenu có thể làm hỏng.
+
+Ba rủi ro lớn nhất có cách sửa đề xuất trong
+[LIMITATIONS.vi.md](LIMITATIONS.vi.md#ba-rủi-ro-lớn-nhất). Chưa mục nào được áp dụng.
+
 ## Việc cần làm định kỳ
 
 Hằng tuần:
