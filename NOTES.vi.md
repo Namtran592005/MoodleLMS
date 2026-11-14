@@ -222,7 +222,7 @@ Kết quả mong đợi sau khi thay:
 là chép lại đúng những byte cũ. Restic giữ một bản cho mỗi khối, nhờ vậy lần chạy
 thứ hai khi dữ liệu không đổi chỉ thêm vài trăm byte.
 
-Job trong `scripts/restic-backup.sh` làm bốn việc:
+Job trong `scripts/restic-job.sh` (Ofelia gọi qua `docker exec`) làm bốn việc:
 
 1. Khởi tạo `backup/restic` nếu kho chưa có.
 2. Chạy `restic backup /var/www/moodledata` với host `moodle` và tag `files`.
@@ -237,14 +237,40 @@ nhất khi kho chưa đủ 7 ngày; sau một tuần số bản ổn định đ�
 khoảng 22 MB cho 50 MB dữ liệu. Bản ngoài máy chủ là việc còn lại trong
 [LIMITATIONS.vi.md](LIMITATIONS.vi.md#sửa-3-dọn-và-đưa-backup-ra-khỏi-máy-chủ).
 
-Chạy tay và kiểm tra:
+Chạy backup bằng tay từ host, cùng luồng mà Ofelia dùng:
 
 ```bash
-docker exec moodle_web sh /scripts/restic-backup.sh
+bash scripts/restic-backup.sh                 # backup ngay, rồi in 3 snapshot và dung lượng kho
 docker exec moodle_web restic snapshots
 docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
 ```
+
+`scripts/restic-backup.sh` kiểm tra `moodle_web` đang chạy rồi gọi
+`sh /scripts/restic-job.sh` trong container, nơi có restic, `/backup/restic` và
+`/var/www/moodledata`. Wrapper này để chạy tay không phải nhớ lệnh `docker exec`
+dài, và để lịch tự động với chạy tay dùng chung một đoạn mã.
+
+### Dọn kho restic
+
+`scripts/restic-clean.sh` xóa lịch sử backup có chủ đích; không dùng trong vận
+hành bình thường. Mặc định script chạy
+`restic forget --keep-last 0 --prune --unsafe-allow-remove-all`, xóa mọi snapshot
+tag `files` của host `moodle` nhưng giữ kho và mật khẩu trong `.env`. `--repo` xóa
+luôn thư mục `backup/restic`, nên lần backup sau sẽ khởi tạo kho mới. `--dry-run`
+chỉ in ra sẽ xóa gì.
+
+```bash
+bash scripts/restic-clean.sh --dry-run        # xem snapshot nao se bi xoa
+bash scripts/restic-clean.sh                  # xoa snapshot, giu kho
+bash scripts/restic-clean.sh --repo --dry-run # xem dung luong kho truoc khi xoa
+bash scripts/restic-clean.sh --repo           # xoa ca backup/restic
+```
+
+Cả hai chế độ xóa đều hỏi gõ `XOA`. `--repo` chạy `rm -rf` bằng root trong
+container, nên tệp do root tạo biến mất mà không cần `sudo`; nếu container đang
+tắt, script lùi về `sudo rm -rf`. Sau khi dọn mặc định, kho còn vài tệp nhưng vẫn
+hợp lệ, và lần backup sau ghi lại toàn bộ cây.
 
 Prune phải ghi lại các pack, nên cần chỗ trống và chạy lâu hơn khi kho lớn dần.
 Nếu nó lỗi vì đầy ổ, snapshot vẫn nguyên; giải phóng chỗ rồi chạy lại:
@@ -298,6 +324,28 @@ docker exec moodle_web restic unlock --remove-all
 không mở được kho, nên phải giữ một bản ngoài máy chủ. Khi muốn chuyển kho đi nơi
 khác, đặt `RESTIC_REPOSITORY` trong `.env` thành đích `s3:`, `rclone:` hoặc
 `sftp:` rồi chạy `restic init` ở đó một lần.
+
+### Định dạng lịch của Ofelia
+
+Ofelia 0.3.x, bản đứng sau tag `latest`, vẫn bắt buộc trường giây ở đầu:
+`0 0 19 * * *` là 19:00:00 UTC, còn `0 19 * * *` là mỗi giờ vào phút 19. Dạng
+năm trường trông hợp lệ và không báo lỗi, nên một job hằng ngày âm thầm thành
+mỗi giờ một lần.
+
+```text
+0 0 17 * * *   xoay log      (00:00 giờ VN)
+0 0 19 * * *   sao lưu tệp   (02:00 giờ VN)
+@daily         dump mysql
+@every 1m      cron moodle
+```
+
+Kiểm tra lịch đã đăng ký thật:
+
+```bash
+docker logs moodle_cron_scheduler 2>&1 | grep 'New job registered'
+```
+
+Mỗi dòng in kèm lịch, nên thấy `0 19 * * *` trong đó là đúng lỗi này.
 
 ## Xử lý sự cố
 
@@ -424,7 +472,7 @@ Hằng tuần:
 docker compose ps
 docker stats --no-stream
 docker exec moodle_db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM mdl_logstore_standard_log;"'
-docker exec moodle_web restic snapshots --last
+docker exec moodle_web restic snapshots --latest 1
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost/
 ```
 

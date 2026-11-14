@@ -186,12 +186,12 @@ services:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.moodle-cron.schedule=@every 1m"
       - "ofelia.job-exec.moodle-cron.command=setpriv --reuid www-data --regid www-data --init-groups php /var/www/html/admin/cli/cron.php --keep-alive=0"
-      # 17h UTC = 0h VN
-      - "ofelia.job-exec.logs-rotate.schedule=0 17 * * *"
+      # 17h UTC = 0h VN. Ofelia 0.3.x can len 6 truong, truong dau la giay.
+      - "ofelia.job-exec.logs-rotate.schedule=0 0 17 * * *"
       - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
       # 19h UTC = 2h VN
-      - "ofelia.job-exec.restic-backup.schedule=0 19 * * *"
-      - "ofelia.job-exec.restic-backup.command=nice -n 19 sh /scripts/restic-backup.sh"
+      - "ofelia.job-exec.restic-backup.schedule=0 0 19 * * *"
+      - "ofelia.job-exec.restic-backup.command=nice -n 19 sh /scripts/restic-job.sh"
 
   cron:
     image: mcuadros/ofelia:latest

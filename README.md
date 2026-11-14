@@ -178,7 +178,7 @@ Two jobs run every day, database first and files second:
 
 ```bash
 bash scripts/db-backup.sh                 # dump to backup/moodle_<time>.sql and moodle_latest.sql
-docker exec moodle_web sh /scripts/restic-backup.sh   # incremental backup of moodledata
+bash scripts/restic-backup.sh             # incremental backup of moodledata
 ```
 
 Ofelia runs the dump at 00:00 UTC (07:00 in Vietnam) and the restic job at
@@ -189,7 +189,15 @@ a second run of unchanged data adds a few hundred bytes instead of a full copy.
 After each successful backup it keeps the last 7 daily snapshots and prunes the
 rest; a failed backup never removes the last good copy.
 
+Two scripts share the work:
+
+- `scripts/restic-backup.sh` runs on the host, starts a backup now, then prints
+  the latest 3 snapshots and the repository size.
+- `scripts/restic-job.sh` is the actual job that runs inside the container;
+  Ofelia calls it on schedule, so there is no need to run it directly.
+
 ```bash
+bash scripts/restic-backup.sh               # back up now, do not wait for the schedule
 docker exec moodle_web restic snapshots      # list IDs and dates
 bash scripts/restic-restore.sh              # newest snapshot -> backup/restore_<time>
 bash scripts/restic-restore.sh <snapshot>   # a specific snapshot from the list
@@ -203,6 +211,11 @@ Database restore uses `bash scripts/db-restore.sh <file.sql>`. Losing
 `RESTIC_PASSWORD` makes the repository unreadable, so keep a copy outside the
 server. Step-by-step procedures and the lock caveat are in
 [NOTES.md](NOTES.md#restic-file-backup).
+
+To drop the backup history, use `scripts/restic-clean.sh`: by default it removes
+every snapshot but keeps the repository and the password, `--repo` removes the
+repository directory too, and `--dry-run` only prints what it would do. Both
+destructive modes ask you to type `XOA` to confirm.
 
 ### Cron
 

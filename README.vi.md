@@ -175,7 +175,7 @@ Mỗi ngày có hai job, cơ sở dữ liệu trước rồi tới tệp:
 
 ```bash
 bash scripts/db-backup.sh                 # dump vào backup/moodle_<thời-gian>.sql và moodle_latest.sql
-docker exec moodle_web sh /scripts/restic-backup.sh   # backup tăng dần moodledata
+bash scripts/restic-backup.sh             # backup tăng dần moodledata
 ```
 
 Ofelia chạy dump lúc 00:00 UTC (07:00 giờ Việt Nam) và job restic lúc 19:00 UTC
@@ -185,7 +185,15 @@ với lần trước: chạy lại khi dữ liệu không đổi chỉ thêm và
 bản đầy đủ. Sau mỗi lần backup thành công, script giữ 7 bản ngày gần nhất rồi dọn
 phần cũ; một lần backup lỗi không bao giờ xóa bản tốt cuối cùng.
 
+Hai script chia nhau công việc:
+
+- `scripts/restic-backup.sh` chạy trên host, khởi động backup ngay, rồi in 3
+  snapshot mới nhất và dung lượng kho.
+- `scripts/restic-job.sh` là phần việc thật, chạy trong container; Ofelia gọi
+  theo lịch nên không cần chạy trực tiếp.
+
 ```bash
+bash scripts/restic-backup.sh               # backup ngay, không chờ lịch
 docker exec moodle_web restic snapshots      # xem ID và ngày
 bash scripts/restic-restore.sh              # bản mới nhất -> backup/restore_<thời-gian>
 bash scripts/restic-restore.sh <snapshot>   # một bản cụ thể trong danh sách
@@ -198,6 +206,10 @@ tệp, kiểm tra quyền rồi khởi động lại. Phục hồi cơ sở dữ
 `bash scripts/db-restore.sh <tệp.sql>`. Mất `RESTIC_PASSWORD` là mất khả năng đọc
 kho, nên phải giữ một bản ngoài máy chủ. Quy trình từng bước và lưu ý về lock nằm
 trong [NOTES.vi.md](NOTES.vi.md#sao-lưu-tệp-bằng-restic).
+
+Khi cần bỏ lịch sử backup, dùng `scripts/restic-clean.sh`: mặc định xóa toàn bộ
+snapshot nhưng giữ kho và mật khẩu, `--repo` xóa cả thư mục kho, `--dry-run` chỉ
+in ra sẽ làm gì. Cả hai chế độ xóa đều hỏi gõ `XOA` để xác nhận.
 
 ### Cron
 

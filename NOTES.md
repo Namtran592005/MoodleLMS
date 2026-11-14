@@ -225,7 +225,8 @@ Expected results after the change:
 every day copies the same bytes repeatedly. Restic keeps one copy of each block,
 which is why the second run of unchanged data adds hundreds of bytes.
 
-What the job does, in `scripts/restic-backup.sh`:
+What the job does, in `scripts/restic-job.sh` (Ofelia calls it through
+`docker exec`):
 
 1. Initialise `backup/restic` if the repository does not exist yet.
 2. Run `restic backup /var/www/moodledata` with host `moodle` and tag `files`.
@@ -240,14 +241,41 @@ week the count settles at exactly 7. Today the repository is about 22 MB for
 50 MB of data. Offsite copies are the remaining task in
 [LIMITATIONS.md](LIMITATIONS.md#fix-3-prune-and-copy-backups-off-the-server).
 
-Manual run and checks:
+Run a backup by hand from the host, which is the same flow Ofelia uses:
 
 ```bash
-docker exec moodle_web sh /scripts/restic-backup.sh
+bash scripts/restic-backup.sh                 # backup now, then show 3 snapshots and repo size
 docker exec moodle_web restic snapshots
 docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
 ```
+
+`scripts/restic-backup.sh` checks that `moodle_web` is running and then calls
+`sh /scripts/restic-job.sh` inside the container, where restic, `/backup/restic`
+and `/var/www/moodledata` exist. The wrapper exists so manual runs need no long
+`docker exec` line and so the schedule and manual runs share one code path.
+
+### Cleaning the restic repository
+
+`scripts/restic-clean.sh` removes backup history on purpose; it is not part of
+normal operation. The default mode runs
+`restic forget --keep-last 0 --prune --unsafe-allow-remove-all`, which deletes
+every snapshot tagged `files` for host `moodle` but keeps the repository and the
+password in `.env`. `--repo` deletes `backup/restic` itself, so the next backup
+initialises a fresh repository. `--dry-run` prints what would be removed.
+
+```bash
+bash scripts/restic-clean.sh --dry-run        # see the snapshots that would go
+bash scripts/restic-clean.sh                  # delete snapshots, keep the repo
+bash scripts/restic-clean.sh --repo --dry-run # see the repo size before deleting it
+bash scripts/restic-clean.sh --repo           # delete backup/restic
+```
+
+Both destructive modes ask you to type `XOA`. `--repo` runs `rm -rf` as root
+inside the container, so the files owned by root disappear without `sudo`; if
+the container is stopped, the script falls back to `sudo rm -rf`. After a
+default clean the repository shrinks to a few files but stays valid, and the
+next backup stores the whole tree again.
 
 Prune rewrites pack files, so it needs free space and takes longer as the
 repository grows. If it ever fails on a full disk, the snapshots stay intact;
@@ -304,6 +332,28 @@ docker exec moodle_web restic unlock --remove-all
 repository cannot be decrypted, so keep a copy outside the server. To move the
 repository later, set `RESTIC_REPOSITORY` in `.env` to an `s3:`, `rclone:` or
 `sftp:` target and run `restic init` there once.
+
+### Ofelia schedule format
+
+Ofelia 0.3.x, the version behind the `latest` tag, still requires the seconds
+field first: `0 0 19 * * *` means 19:00:00 UTC, while `0 19 * * *` means every
+hour at minute 19. The five-field form looks valid and produces no error, so a
+daily job silently turns hourly.
+
+```text
+0 0 17 * * *   log rotation  (00:00 VN)
+0 0 19 * * *   restic backup  (02:00 VN)
+@daily         mysql dump
+@every 1m      moodle cron
+```
+
+Check what was really registered in the log:
+
+```bash
+docker logs moodle_cron_scheduler 2>&1 | grep 'New job registered'
+```
+
+Every line prints the schedule, so `0 19 * * *` in that output is the bug.
 
 ## Troubleshooting
 
@@ -431,7 +481,7 @@ Weekly:
 docker compose ps
 docker stats --no-stream
 docker exec moodle_db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM mdl_logstore_standard_log;"'
-docker exec moodle_web restic snapshots --last
+docker exec moodle_web restic snapshots --latest 1
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost/
 ```
 

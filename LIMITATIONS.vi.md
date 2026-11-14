@@ -114,11 +114,14 @@ ghi lại khoảng 50 MB dữ liệu không đổi.
 php/Dockerfile        apt install restic
 docker-compose.yml    mount ./scripts:/scripts:ro, truyen RESTIC_PASSWORD
                       va RESTIC_REPOSITORY, them job Ofelia luc 19:00 UTC
-scripts/restic-backup.sh   khoi tao kho, backup moodledata, loai tru rac
+scripts/restic-job.sh     job that su: khoi tao kho, backup moodledata, loai tru rac
+scripts/restic-backup.sh  wrapper tren host de chay tay
+scripts/restic-restore.sh phuc hoi ra thu muc tam hoac --in-place
+scripts/restic-clean.sh   xoa snapshot hoac ca kho
 .env / .env.example   RESTIC_PASSWORD
 ```
 
-Job chạy `nice -n 19 sh /scripts/restic-backup.sh` trong container `moodle`.
+Job chạy `nice -n 19 sh /scripts/restic-job.sh` trong container `moodle`.
 Script khởi tạo `/backup/restic` ở lần đầu, sau đó sao lưu `/var/www/moodledata`
 với host `moodle` và tag `files`. Nó loại trừ `cache`, `localcache`, `temp`,
 `sessions`, `muc`, `environment`, `antivirus_quarantine` và `trashdir`, đều là
@@ -224,7 +227,7 @@ Hai chi tiết quan trọng hơn câu lệnh cụ thể:
 ```bash
 ls -lh backup/moodle_latest.sql
 head -5 backup/moodle_latest.sql
-docker exec moodle_web restic snapshots --last
+docker exec moodle_web restic snapshots --latest 1
 rclone lsl remote:moodle/restic | tail -3
 ```
 

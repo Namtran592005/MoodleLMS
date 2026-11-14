@@ -1,42 +1,18 @@
-#!/bin/sh
-# Sao luu moodledata bang restic.
-# Chay trong container moodle: RESTIC_PASSWORD lay tu .env,
-# repo dat tai /backup/restic (bind mount ./backup).
-set -eu
+#!/bin/bash
+set -e
+# Usage: bash scripts/restic-backup.sh
+# Chay tren host. Viec backup van thuc hien trong container moodle
+# (noi co restic va duong dan /var/www/moodledata).
 
-: "${RESTIC_PASSWORD:?RESTIC_PASSWORD chua duoc dat trong .env}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_DIR"
 
-DATA=/var/www/moodledata
-export RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-/backup/restic}"
-export RESTIC_PASSWORD
+docker inspect -f '{{.State.Running}}' moodle_web 2>/dev/null | grep -q true \
+  || { echo "Container moodle_web khong chay" >&2; exit 1; }
 
-case "$RESTIC_REPOSITORY" in
-    /*) mkdir -p "$RESTIC_REPOSITORY" ;;
-esac
+docker exec moodle_web sh /scripts/restic-job.sh
 
-if ! restic snapshots >/dev/null 2>&1; then
-    echo "[restic] khoi tao repo $RESTIC_REPOSITORY"
-    restic init
-fi
-
-echo "[restic] bat dau $(date -u '+%F %T UTC')"
-restic backup "$DATA" \
-    --host moodle \
-    --tag files \
-    --exclude=/var/www/moodledata/cache \
-    --exclude=/var/www/moodledata/localcache \
-    --exclude=/var/www/moodledata/temp \
-    --exclude=/var/www/moodledata/sessions \
-    --exclude=/var/www/moodledata/muc \
-    --exclude=/var/www/moodledata/environment \
-    --exclude=/var/www/moodledata/antivirus_quarantine \
-    --exclude=/var/www/moodledata/trashdir
-
-# Chi don sau khi backup thanh cong (set -e): giu 7 ban ngay gan nhat.
-echo "[restic] don ban cu, giu 7 ngay"
-restic forget \
-    --host moodle \
-    --tag files \
-    --keep-daily 7 \
-    --prune
-echo "[restic] xong $(date -u '+%F %T UTC')"
+echo
+docker exec moodle_web restic snapshots --latest 3
+docker exec moodle_web du -sh /backup/restic

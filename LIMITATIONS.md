@@ -116,13 +116,16 @@ written about 50 MB of unchanged data each time.
 php/Dockerfile        apt install restic
 docker-compose.yml    mount ./scripts:/scripts:ro, pass RESTIC_PASSWORD
                       and RESTIC_REPOSITORY, add an Ofelia job at 19:00 UTC
-scripts/restic-backup.sh   init the repo, back up moodledata, exclude junk
+scripts/restic-job.sh job itself: init the repo, back up moodledata, exclude junk
+scripts/restic-backup.sh  host wrapper for manual runs
+scripts/restic-restore.sh restore to a staging dir or --in-place
+scripts/restic-clean.sh   remove snapshots or the whole repository
 .env / .env.example   RESTIC_PASSWORD
 ```
 
-The job runs `nice -n 19 sh /scripts/restic-backup.sh` in the `moodle`
-container. The script initialises `/backup/restic` on the first run, then backs
-up `/var/www/moodledata` with host `moodle` and tag `files`. It excludes `cache`,
+The job runs `nice -n 19 sh /scripts/restic-job.sh` in the `moodle` container.
+The script initialises `/backup/restic` on the first run, then backs up
+`/var/www/moodledata` with host `moodle` and tag `files`. It excludes `cache`,
 `localcache`, `temp`, `sessions`, `muc`, `environment`, `antivirus_quarantine`
 and `trashdir`, all of which are regenerated or disposable.
 
@@ -228,7 +231,7 @@ Two details matter more than the exact command:
 ```bash
 ls -lh backup/moodle_latest.sql
 head -5 backup/moodle_latest.sql
-docker exec moodle_web restic snapshots --last
+docker exec moodle_web restic snapshots --latest 1
 rclone lsl remote:moodle/restic | tail -3
 ```
 
