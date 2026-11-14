@@ -40,7 +40,7 @@ Data is laid out as follows:
 |---|---|---|
 | `moodle/` | Moodle source | Bind mount |
 | `moodledata/` | User files, cache, sessions | Bind mount |
-| `backup/` | Database dumps | Bind mount |
+| `backup/` | Database dumps and the restic repository | Bind mount |
 | `logs/` | Per-service logs | Bind mount |
 | `moodle_db_data` | MySQL data | Named volume |
 | `redis_data` | Redis AOF, sessions and cache | Named volume |
@@ -74,6 +74,8 @@ chmod 600 .env
 | `MOODLE_DB_USER` | MySQL account used by Moodle |
 | `MOODLE_DB_PASSWORD` | Password for that account |
 | `REDIS_PASSWORD` | Redis password |
+| `RESTIC_PASSWORD` | Passphrase that encrypts the restic repository |
+| `RESTIC_REPOSITORY` | Optional, defaults to `/backup/restic` |
 | `TZ` | Time zone, defaults to `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
 | `PUID`, `PGID` | Optional, used to force a specific UID/GID |
@@ -172,13 +174,31 @@ If files are already owned by `root`, run `bash scripts/fix-perms.sh`; see
 
 ### Backup and restore
 
+Two jobs run every day, database first and files second:
+
 ```bash
-bash scripts/db-backup.sh             # writes backup/moodle_<time>.sql and moodle_latest.sql
-bash scripts/db-restore.sh <file.sql> # restore, with a confirmation step
+bash scripts/db-backup.sh                 # dump to backup/moodle_<time>.sql and moodle_latest.sql
+docker exec moodle_web sh /scripts/restic-backup.sh   # incremental backup of moodledata
 ```
 
-Ofelia runs `mysqldump` daily and overwrites `backup/moodle_latest.sql`. Keep a
-copy off the server with rsync, rclone or object storage.
+Ofelia runs the dump at 00:00 UTC (07:00 in Vietnam) and the restic job at
+19:00 UTC (02:00 in Vietnam), so files are copied after the database.
+The restic repository lives in `backup/restic`, is encrypted with
+`RESTIC_PASSWORD`, and stores only what changed since the previous snapshot, so
+a second run of unchanged data adds a few hundred bytes instead of a full copy.
+
+```bash
+docker exec moodle_web restic snapshots
+docker exec moodle_web restic restore latest --target /tmp/restore-test \
+  --include /var/www/moodledata/filedir
+```
+
+Restore a snapshot to a temporary directory first, then copy the files into
+`moodledata/` while the site is in maintenance. Database restore uses
+`bash scripts/db-restore.sh <file.sql>`. Losing `RESTIC_PASSWORD` makes the
+repository unreadable, so keep a copy outside the server. Step-by-step
+procedures and the lock caveat are in
+[NOTES.md](NOTES.md#restic-file-backup).
 
 ### Cron
 

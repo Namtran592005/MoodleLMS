@@ -3,15 +3,16 @@
 **English** | [Tiếng Việt](LIMITATIONS.vi.md)
 
 An honest list of what this deployment does not do. Severity reflects the impact
-when the problem happens in production, not how likely it is. The two remaining
-highest risks include a proposed fix; the Redis volume was fixed on 2026-11-13.
-Everything else here is unchanged, so the stack still runs as before.
+when the problem happens in production, not how likely it is. Two of the three
+highest risks were fixed on 2026-11-13: Redis now has a data volume and
+`moodledata` is backed up with restic. The remaining one, backup retention and
+offsite copies, is still open.
 
 ## The three highest risks
 
 | # | Risk | Why it matters |
 |---|---|---|
-| 1 | `moodledata/` is not backed up | User files, submissions and uploads exist only on this disk |
+| 1 | `moodledata` backup — fixed 2026-11-13 | Was: user files, submissions and uploads existed only on this disk |
 | 2 | Redis data volume — fixed 2026-11-13 | Was: recreating the container logged every user out |
 | 3 | Backups share the server disk and never expire | Disk failure loses both data and copies; the folder grows without bound |
 
@@ -31,7 +32,7 @@ Everything else here is unchanged, so the stack still runs as before.
 | Limitation | Impact | Severity |
 |---|---|---|
 | Database dump once a day | Up to 24 hours of data lost; RPO about 24 h | High |
-| `moodledata/` not in the backup script | Uploaded files lost even when the database is intact | High |
+| File backup is 19 hours behind the dump | A file uploaded after the dump is orphaned on restore, not lost | Low |
 | Backup stored on the same disk | Disk failure or ransomware loses every copy | High |
 | No binlog | No point-in-time recovery; only the last dump | High |
 | Backup files never pruned | `backup/` grows until the disk is full | Medium |
@@ -94,56 +95,68 @@ structural changes, not tuning:
 
 For a lab, a demo or a small deployment under about 100 users, most of these are
 reasonable trade-offs for a stack that starts with one command. The items worth
-fixing even at small scale are the ones marked High above, starting with the two
-backup risks. Everything else can wait until the deployment grows or the data
-becomes valuable.
+fixing even at small scale are the ones marked High above, starting with the one
+remaining backup risk. Everything else can wait until the deployment grows or the
+data becomes valuable.
 
-## Fix 1: back up `moodledata`
+## Fix 1: back up `moodledata` with restic (applied)
 
-**Current state.** `scripts/db-backup.sh` dumps MySQL only. Files under
-`moodledata/filedir` exist in one place.
+**Status.** Applied on 2026-11-13. The first snapshot holds 5,671 files
+(50.1 MiB) and uses 19.9 MiB in the repository; the second run with no changes
+added 680 bytes in two seconds. A restore of `filedir` produced 4,653 files,
+matching the source exactly, and `restic check` found no errors.
 
-**Proposed change.** Add `scripts/files-backup.sh` and a second Ofelia job:
+**Before.** `scripts/db-backup.sh` dumped MySQL only. Files under
+`moodledata/filedir` existed in one place, and a full `tar` every day would have
+written about 50 MB of unchanged data each time.
 
-```bash
-#!/bin/bash
-set -e
-cd "$(dirname "$0")/.."
-mkdir -p backup
-STAMP=$(date +%F_%H-%M)
-tar -czf "backup/moodledata_${STAMP}.tar.gz" \
-  --exclude='moodledata/cache' \
-  --exclude='moodledata/localcache' \
-  --exclude='moodledata/temp' \
-  moodledata
-echo "Done: backup/moodledata_${STAMP}.tar.gz"
+**Change.** Four small edits:
+
+```text
+php/Dockerfile        apt install restic
+docker-compose.yml    mount ./scripts:/scripts:ro, pass RESTIC_PASSWORD
+                      and RESTIC_REPOSITORY, add an Ofelia job at 19:00 UTC
+scripts/restic-backup.sh   init the repo, back up moodledata, exclude junk
+.env / .env.example   RESTIC_PASSWORD
 ```
 
-Schedule it about 30 minutes after the database dump. Run the file backup
-second: a file uploaded between the two jobs is an orphan, which is harmless,
-while the reverse could leave a database row pointing at a missing file.
+The job runs `nice -n 19 sh /scripts/restic-backup.sh` in the `moodle`
+container. The script initialises `/backup/restic` on the first run, then backs
+up `/var/www/moodledata` with host `moodle` and tag `files`. It excludes `cache`,
+`localcache`, `temp`, `sessions`, `muc`, `environment`, `antivirus_quarantine`
+and `trashdir`, all of which are regenerated or disposable.
 
-**Restore procedure.**
+Because `filedir` names files by content hash, unchanged files are never stored
+twice. The repository grew from 0 to 22 MB for 50 MB of data.
+
+**Verify.**
+
+```bash
+docker exec moodle_web restic snapshots
+docker exec moodle_web restic stats --mode restore-size
+docker exec moodle_web restic check --read-data-subset=5%
+```
+
+**Restore.** Stop the site, restore the database, extract files into a
+temporary directory first, then move them into `moodledata/`:
 
 ```bash
 docker compose stop moodle cron
 bash scripts/db-restore.sh backup/moodle_latest.sql
-tar -xzf backup/moodledata_YYYY-MM-DD_HH-MM.tar.gz -C .
+docker exec moodle_web restic restore latest --target /tmp/restore-test \
+  --include /var/www/moodledata/filedir
+cp -a /tmp/restore-test/var/www/moodledata/filedir/. moodledata/filedir/
+rm -rf /tmp/restore-test
 bash scripts/fix-perms.sh
 docker compose start moodle cron
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-**Verify.** Compare file counts before and after:
-
-```bash
-find moodledata/filedir -type f | wc -l
-tar -tzf backup/moodledata_YYYY-MM-DD_HH-MM.tar.gz | wc -l
-```
-
-**Trade-offs.** The archive is as large as `moodledata` (about 100 MB now) and
-compression costs CPU during the backup window. If it grows past a few GB,
-switch to `rsync --link-dest` snapshots so unchanged files are hard-linked.
+**Trade-offs.** The repository sits in `backup/` on the same disk, so it
+protects against mistakes and software faults, not against losing the disk. There
+is no `forget` or `prune` step yet, so snapshots accumulate; that is Fix 3.
+`RESTIC_PASSWORD` is now as important as the data itself: without it the
+repository cannot be decrypted, so keep a copy outside the server.
 
 ## Fix 2: give Redis a data volume (applied)
 
@@ -196,19 +209,16 @@ handler, which survives Redis entirely but loses some speed.
 plus `moodle_latest.sql`, and never deletes anything. Everything stays on the
 same disk as the database.
 
-**Proposed change.** Keep 14 daily dumps, one weekly copy, and send both database
-and file backups to remote storage:
+**Proposed change.** Keep 14 daily snapshots, 8 weekly and 6 monthly, and copy
+both the dump and the repository to remote storage:
 
 ```bash
-# after a successful dump
-find backup -maxdepth 1 -name 'moodle_*.sql' -mtime +14 -delete
-if [ "$(date +%u)" = "7" ]; then
-  cp backup/moodle_latest.sql "backup/weekly_$(date +%F).sql"
-fi
-find backup -maxdepth 1 -name 'weekly_*.sql' -mtime +56 -delete
+# after a successful dump and a successful restic run
+docker exec moodle_web restic forget --host moodle --tag files \
+  --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
 
 rclone copy backup/moodle_latest.sql remote:moodle/db/
-rclone copy backup/moodledata_latest.tar.gz remote:moodle/files/
+rclone sync backup/restic remote:moodle/restic
 ```
 
 Two details matter more than the exact numbers:
@@ -223,7 +233,8 @@ Two details matter more than the exact numbers:
 ```bash
 ls -lh backup/moodle_latest.sql
 head -5 backup/moodle_latest.sql
-rclone lsl remote:moodle/db/ | tail -3
+docker exec moodle_web restic snapshots --last
+rclone lsl remote:moodle/restic | tail -3
 ```
 
 **Trade-offs.** Remote storage costs money and rclone credentials sit on the

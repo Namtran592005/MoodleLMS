@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     libpng-dev libjpeg-dev libfreetype6-dev \
     libzip-dev libicu-dev libxml2-dev libxslt1-dev \
     libonig-dev libsodium-dev zlib1g-dev \
-    git unzip ghostscript \
+    git unzip ghostscript restic \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \

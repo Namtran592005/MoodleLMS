@@ -154,6 +154,7 @@ services:
       - ./moodle:/var/www/html
       - ./moodledata:/var/www/moodledata
       - ./backup:/backup
+      - ./scripts:/scripts:ro
       - ./logs/php:/var/log/php
       - ./logs/moodle:/var/log/moodle
       - ./logs:/logs
@@ -165,6 +166,9 @@ services:
       MOODLE_DB_NAME: ${MOODLE_DB_NAME}
       MOODLE_DB_USER: ${MOODLE_DB_USER}
       MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
+      # doi sang rclone:/... hoac s3:... khi can day backup ra ngoai
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-/backup/restic}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD}
       # de trong = tu tinh theo CPU/RAM
       APACHE_MAX_REQUEST_WORKERS: ${APACHE_MAX_REQUEST_WORKERS:-}
       APACHE_START_SERVERS: ${APACHE_START_SERVERS:-}
@@ -185,6 +189,9 @@ services:
       # 17h UTC = 0h VN
       - "ofelia.job-exec.logs-rotate.schedule=0 17 * * *"
       - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
+      # 19h UTC = 2h VN
+      - "ofelia.job-exec.restic-backup.schedule=0 19 * * *"
+      - "ofelia.job-exec.restic-backup.command=nice -n 19 sh /scripts/restic-backup.sh"
 
   cron:
     image: mcuadros/ofelia:latest

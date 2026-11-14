@@ -218,6 +218,60 @@ Expected results after the change:
 | `/theme/boost/style/moodle.css` | 200 |
 | `/login/index.php` | 200 |
 
+### Restic file backup
+
+`moodledata` holds the real user content: submissions, images, SCORM packages.
+`filedir` is immutable — the file name is the content hash — so a full archive
+every day copies the same bytes repeatedly. Restic keeps one copy of each block,
+which is why the second run of unchanged data adds hundreds of bytes.
+
+What the job does, in `scripts/restic-backup.sh`:
+
+1. Initialise `backup/restic` if the repository does not exist yet.
+2. Run `restic backup /var/www/moodledata` with host `moodle` and tag `files`.
+3. Exclude `cache`, `localcache`, `temp`, `sessions`, `muc`, `environment`,
+   `antivirus_quarantine` and `trashdir`. All are regenerated or disposable.
+
+There is no `forget` or `prune` step, so snapshots accumulate. Today the
+repository is about 22 MB for 50 MB of data; retention and offsite copies are
+the remaining task in [LIMITATIONS.md](LIMITATIONS.md#fix-3-prune-and-copy-backups-off-the-server).
+
+Manual run and checks:
+
+```bash
+docker exec moodle_web sh /scripts/restic-backup.sh
+docker exec moodle_web restic snapshots
+docker exec moodle_web restic stats --mode restore-size
+docker exec moodle_web restic check --read-data-subset=5%
+```
+
+Restore into a scratch directory, compare file counts, then move the result
+into place during maintenance:
+
+```bash
+docker exec moodle_web restic restore latest --target /tmp/restore-test \
+  --include /var/www/moodledata/filedir
+find moodledata/filedir -type f | wc -l
+docker exec moodle_web find /tmp/restore-test/var/www/moodledata/filedir -type f | wc -l
+```
+
+Two details that cost time when forgotten:
+
+- The repository is written by `root` inside the container, so read it with
+  `docker exec` or `sudo` from the host.
+- If a restic command is interrupted (for example piped into `head`), it leaves a
+  lock behind and the next run fails with "repository is already locked". Remove
+  it only when no backup is running:
+
+```bash
+docker exec moodle_web restic unlock --remove-all
+```
+
+`RESTIC_PASSWORD` lives in `.env` and is passed to the container. Without it the
+repository cannot be decrypted, so keep a copy outside the server. To move the
+repository later, set `RESTIC_REPOSITORY` in `.env` to an `s3:`, `rclone:` or
+`sftp:` target and run `restic init` there once.
+
 ## Troubleshooting
 
 ### 502 Bad Gateway
@@ -326,14 +380,15 @@ cron schedules and log timestamps drift.
 The full analysis is in [LIMITATIONS.md](LIMITATIONS.md). In short:
 
 - One host only: no failover, no zero-downtime upgrade.
-- `moodledata/` is not backed up, and dumps share the server disk.
+- Restic copies `moodledata/`, but the repository shares the server disk.
 - Redis keeps its AOF in `redis_data`; `down -v` still clears sessions.
 - No monitoring or alerting; users notice failures first.
 - Mutable image tags make rebuilds non-reproducible.
 - Upgrades are manual and the usermenu patch can break them.
 
-The three highest risks have proposed fixes in
-[LIMITATIONS.md](LIMITATIONS.md#the-three-highest-risks). None are applied.
+The three highest risks have notes in
+[LIMITATIONS.md](LIMITATIONS.md#the-three-highest-risks). Restic and the Redis
+volume are applied; pruning and offsite copies are not.
 
 ## Maintenance checklist
 
@@ -343,12 +398,14 @@ Weekly:
 docker compose ps
 docker stats --no-stream
 docker exec moodle_db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM mdl_logstore_standard_log;"'
+docker exec moodle_web restic snapshots --last
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost/
 ```
 
 Monthly:
 
 - Copy the latest dump off the server and test a restore.
+- Run `restic check --read-data-subset=5%` and test a file restore.
 - Check free disk and `docker system df`.
 - Review `logs/php` and `logs/moodle` for repeated errors.
 - Confirm the OS security updates were applied.

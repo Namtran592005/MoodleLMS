@@ -38,7 +38,7 @@ Dữ liệu được phân bố như sau:
 |---|---|---|
 | `moodle/` | Mã nguồn Moodle | Bind mount |
 | `moodledata/` | Tệp người dùng, cache, session | Bind mount |
-| `backup/` | Bản dump cơ sở dữ liệu | Bind mount |
+| `backup/` | Bản dump cơ sở dữ liệu và kho restic | Bind mount |
 | `logs/` | Log của từng dịch vụ | Bind mount |
 | `moodle_db_data` | Dữ liệu MySQL | Named volume |
 | `redis_data` | Dữ liệu Redis (AOF), session và cache | Named volume |
@@ -71,6 +71,8 @@ chmod 600 .env
 | `MOODLE_DB_USER` | Tài khoản MySQL dành cho Moodle |
 | `MOODLE_DB_PASSWORD` | Mật khẩu của tài khoản trên |
 | `REDIS_PASSWORD` | Mật khẩu Redis |
+| `RESTIC_PASSWORD` | Mật khẩu mã hóa kho restic |
+| `RESTIC_REPOSITORY` | Tùy chọn, mặc định `/backup/restic` |
 | `TZ` | Múi giờ, mặc định `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
 | `PUID`, `PGID` | Không bắt buộc, dùng khi cần ép UID/GID |
@@ -169,13 +171,30 @@ Nếu đã có tệp thuộc `root`, chạy `bash scripts/fix-perms.sh`; chi ti�
 
 ### Backup và phục hồi
 
+Mỗi ngày có hai job, cơ sở dữ liệu trước rồi tới tệp:
+
 ```bash
-bash scripts/db-backup.sh            # tạo backup/moodle_<thời-gian>.sql và moodle_latest.sql
-bash scripts/db-restore.sh <tệp.sql> # phục hồi, có bước xác nhận
+bash scripts/db-backup.sh                 # dump vào backup/moodle_<thời-gian>.sql và moodle_latest.sql
+docker exec moodle_web sh /scripts/restic-backup.sh   # backup tăng dần moodledata
 ```
 
-Ofelia chạy `mysqldump` hằng ngày và ghi đè `backup/moodle_latest.sql`. Nên đồng
-bộ bản backup ra ngoài máy chủ bằng rsync, rclone hoặc lưu trữ đối tượng.
+Ofelia chạy dump lúc 00:00 UTC (07:00 giờ Việt Nam) và job restic lúc 19:00 UTC
+(02:00 giờ Việt Nam), nên tệp được sao lưu sau cơ sở dữ liệu. Kho restic nằm trong
+`backup/restic`, được mã hóa bằng `RESTIC_PASSWORD`, và chỉ lưu phần thay đổi so
+với lần trước: chạy lại khi dữ liệu không đổi chỉ thêm vài trăm byte thay vì một
+bản đầy đủ.
+
+```bash
+docker exec moodle_web restic snapshots
+docker exec moodle_web restic restore latest --target /tmp/restore-test \
+  --include /var/www/moodledata/filedir
+```
+
+Nên phục hồi ra thư mục tạm trước, rồi mới chép vào `moodledata/` khi site đang bảo
+trì. Phục hồi cơ sở dữ liệu dùng `bash scripts/db-restore.sh <tệp.sql>`. Mất
+`RESTIC_PASSWORD` là mất khả năng đọc kho, nên phải giữ một bản ngoài máy chủ.
+Quy trình từng bước và lưu ý về lock nằm trong
+[NOTES.vi.md](NOTES.vi.md#sao-lưu-tệp-bằng-restic).
 
 ### Cron
 

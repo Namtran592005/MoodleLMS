@@ -3,15 +3,16 @@
 [English](LIMITATIONS.md) | **Tiếng Việt**
 
 Danh sách thẳng thắn những gì bản triển khai này chưa làm được. Mức độ phản ánh
-hậu quả khi sự cố xảy ra trong vận hành thật, không phải khả năng xảy ra. Hai rủi ro
-lớn nhất còn lại có kèm cách sửa đề xuất; phần volume Redis đã sửa ngày 13-11-2026.
-Các mục khác giữ nguyên, hệ thống vẫn chạy như trước.
+hậu quả khi sự cố xảy ra trong vận hành thật, không phải khả năng xảy ra. Hai trong
+ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ liệu và `moodledata`
+được sao lưu bằng restic. Rủi ro còn lại, vòng đời backup và bản ngoài máy chủ, vẫn
+đang mở.
 
 ## Ba rủi ro lớn nhất
 
 | # | Rủi ro | Vì sao quan trọng |
 |---|---|---|
-| 1 | `moodledata/` không được sao lưu | Tệp người dùng, bài nộp, ảnh chỉ tồn tại trên ổ đĩa này |
+| 1 | Backup `moodledata` — đã sửa 13-11-2026 | Trước đây: tệp người dùng, bài nộp, ảnh chỉ tồn tại trên ổ đĩa này |
 | 2 | Volume Redis — đã sửa 13-11-2026 | Trước đây: tạo lại container là mọi người bị đăng xuất |
 | 3 | Backup nằm cùng ổ đĩa và không bao giờ hết hạn | Hỏng đĩa là mất cả dữ liệu lẫn bản sao; thư mục tăng vô hạn |
 
@@ -31,7 +32,7 @@ Các mục khác giữ nguyên, hệ thống vẫn chạy như trước.
 | Hạn chế | Ảnh hưởng | Mức |
 |---|---|---|
 | Dump cơ sở dữ liệu mỗi ngày một lần | Mất tới 24 giờ dữ liệu; RPO khoảng 24 giờ | Cao |
-| `moodledata/` không nằm trong script backup | Mất tệp tải lên dù cơ sở dữ liệu còn nguyên | Cao |
+| Backup tệp chậm hơn dump 19 giờ | Tệp tải lên sau lần dump thành mồ côi khi phục hồi, không mất | Thấp |
 | Backup lưu cùng ổ đĩa | Hỏng đĩa hoặc ransomware là mất toàn bộ bản sao | Cao |
 | Không bật binlog | Không phục hồi theo thời điểm, chỉ có bản dump cuối | Cao |
 | Bản backup không bao giờ được dọn | `backup/` tăng tới khi đầy ổ | Trung bình |
@@ -94,55 +95,66 @@ Thiết kế chỉ mở rộng theo chiều dọc. Đạt khoảng 1000 người
 
 Với phòng lab, bản demo hoặc triển khai nhỏ dưới khoảng 100 người dùng, phần lớn
 đánh đổi trên là hợp lý cho một hệ thống khởi động bằng một lệnh. Những mục nên sửa
-kể cả ở quy mô nhỏ là các mục mức Cao ở trên, bắt đầu từ hai rủi ro backup. Phần
-còn lại có thể chờ tới khi hệ thống lớn hơn hoặc dữ liệu trở nên quan trọng.
+kể cả ở quy mô nhỏ là các mục mức Cao ở trên, bắt đầu từ rủi ro backup còn lại.
+Phần còn lại có thể chờ tới khi hệ thống lớn hơn hoặc dữ liệu trở nên quan trọng.
 
-## Sửa 1: sao lưu `moodledata`
+## Sửa 1: sao lưu `moodledata` bằng restic (đã áp dụng)
 
-**Hiện trạng.** `scripts/db-backup.sh` chỉ dump MySQL. Tệp trong
-`moodledata/filedir` chỉ tồn tại ở một nơi.
+**Trạng thái.** Đã áp dụng ngày 13-11-2026. Snapshot đầu có 5.671 tệp (50,1 MiB)
+và chiếm 19,9 MiB trong kho; lần chạy thứ hai khi không có thay đổi chỉ thêm
+680 byte trong hai giây. Phục hồi `filedir` cho ra 4.653 tệp, khớp chính xác với
+bản gốc, và `restic check` không báo lỗi.
 
-**Đề xuất.** Thêm `scripts/files-backup.sh` và một job Ofelia thứ hai:
+**Trước đây.** `scripts/db-backup.sh` chỉ dump MySQL. Tệp trong
+`moodledata/filedir` chỉ tồn tại ở một nơi, còn nén toàn bộ bằng `tar` mỗi ngày sẽ
+ghi lại khoảng 50 MB dữ liệu không đổi.
 
-```bash
-#!/bin/bash
-set -e
-cd "$(dirname "$0")/.."
-mkdir -p backup
-STAMP=$(date +%F_%H-%M)
-tar -czf "backup/moodledata_${STAMP}.tar.gz" \
-  --exclude='moodledata/cache' \
-  --exclude='moodledata/localcache' \
-  --exclude='moodledata/temp' \
-  moodledata
-echo "Done: backup/moodledata_${STAMP}.tar.gz"
+**Thay đổi.** Bốn chỗ nhỏ:
+
+```text
+php/Dockerfile        apt install restic
+docker-compose.yml    mount ./scripts:/scripts:ro, truyen RESTIC_PASSWORD
+                      va RESTIC_REPOSITORY, them job Ofelia luc 19:00 UTC
+scripts/restic-backup.sh   khoi tao kho, backup moodledata, loai tru rac
+.env / .env.example   RESTIC_PASSWORD
 ```
 
-Đặt lịch khoảng 30 phút sau lần dump cơ sở dữ liệu. Chạy backup tệp sau: một tệp
-được tải lên giữa hai job sẽ thành mồ côi, vô hại; nếu làm ngược lại, một dòng
-trong DB có thể trỏ tới tệp không còn.
+Job chạy `nice -n 19 sh /scripts/restic-backup.sh` trong container `moodle`.
+Script khởi tạo `/backup/restic` ở lần đầu, sau đó sao lưu `/var/www/moodledata`
+với host `moodle` và tag `files`. Nó loại trừ `cache`, `localcache`, `temp`,
+`sessions`, `muc`, `environment`, `antivirus_quarantine` và `trashdir`, đều là
+dữ liệu tái tạo được hoặc dùng xong có thể bỏ.
 
-**Quy trình phục hồi.**
+Vì `filedir` đặt tên tệp theo hash nội dung, tệp không đổi không bao giờ được lưu
+hai lần. Kho tăng từ 0 lên 22 MB cho 50 MB dữ liệu.
+
+**Kiểm tra.**
+
+```bash
+docker exec moodle_web restic snapshots
+docker exec moodle_web restic stats --mode restore-size
+docker exec moodle_web restic check --read-data-subset=5%
+```
+
+**Phục hồi.** Dừng site, phục hồi cơ sở dữ liệu, giải nén tệp ra thư mục tạm
+trước rồi mới chép vào `moodledata/`:
 
 ```bash
 docker compose stop moodle cron
 bash scripts/db-restore.sh backup/moodle_latest.sql
-tar -xzf backup/moodledata_YYYY-MM-DD_HH-MM.tar.gz -C .
+docker exec moodle_web restic restore latest --target /tmp/restore-test \
+  --include /var/www/moodledata/filedir
+cp -a /tmp/restore-test/var/www/moodledata/filedir/. moodledata/filedir/
+rm -rf /tmp/restore-test
 bash scripts/fix-perms.sh
 docker compose start moodle cron
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-**Kiểm tra.** So sánh số tệp trước và sau:
-
-```bash
-find moodledata/filedir -type f | wc -l
-tar -tzf backup/moodledata_YYYY-MM-DD_HH-MM.tar.gz | wc -l
-```
-
-**Đánh đổi.** Tệp nén lớn bằng `moodledata` (hiện khoảng 100 MB) và việc nén tốn
-CPU trong khung giờ backup. Nếu vượt vài GB, chuyển sang snapshot bằng
-`rsync --link-dest` để tệp không đổi được hard-link.
+**Đánh đổi.** Kho nằm trong `backup/` cùng ổ đĩa, nên nó cứu được sai sót và lỗi
+phần mềm, không cứu được khi mất ổ đĩa. Chưa có bước `forget` hay `prune`, nên
+snapshot tăng dần; đó là Sửa 3. `RESTIC_PASSWORD` giờ quan trọng ngang dữ liệu:
+không có nó thì không mở được kho, nên phải giữ một bản ngoài máy chủ.
 
 ## Sửa 2: cấp volume dữ liệu cho Redis (đã áp dụng)
 
@@ -195,18 +207,16 @@ khi mất Redis nhưng chậm hơn một chút.
 chạy, cộng thêm `moodle_latest.sql`, và không bao giờ xóa gì. Tất cả nằm cùng ổ
 đĩa với cơ sở dữ liệu.
 
-**Đề xuất.** Giữ 14 bản ngày, một bản tuần, và đưa cả DB lẫn tệp ra nơi khác:
+**Đề xuất.** Giữ 14 snapshot ngày, 8 tuần và 6 tháng, đồng thời đưa cả dump lẫn
+kho restic ra nơi khác:
 
 ```bash
-# sau khi dump thành công
-find backup -maxdepth 1 -name 'moodle_*.sql' -mtime +14 -delete
-if [ "$(date +%u)" = "7" ]; then
-  cp backup/moodle_latest.sql "backup/weekly_$(date +%F).sql"
-fi
-find backup -maxdepth 1 -name 'weekly_*.sql' -mtime +56 -delete
+# sau khi dump va backup restic thanh cong
+docker exec moodle_web restic forget --host moodle --tag files \
+  --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
 
 rclone copy backup/moodle_latest.sql remote:moodle/db/
-rclone copy backup/moodledata_latest.tar.gz remote:moodle/files/
+rclone sync backup/restic remote:moodle/restic
 ```
 
 Hai chi tiết quan trọng hơn con số cụ thể:
@@ -220,7 +230,8 @@ Hai chi tiết quan trọng hơn con số cụ thể:
 ```bash
 ls -lh backup/moodle_latest.sql
 head -5 backup/moodle_latest.sql
-rclone lsl remote:moodle/db/ | tail -3
+docker exec moodle_web restic snapshots --last
+rclone lsl remote:moodle/restic | tail -3
 ```
 
 **Đánh đổi.** Lưu trữ remote tốn phí và thông tin đăng nhập rclone nằm trên host

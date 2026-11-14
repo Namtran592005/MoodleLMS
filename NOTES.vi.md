@@ -215,6 +215,60 @@ Kết quả mong đợi sau khi thay:
 | `/theme/boost/style/moodle.css` | 200 |
 | `/login/index.php` | 200 |
 
+### Sao lưu tệp bằng restic
+
+`moodledata` chứa nội dung thật của người dùng: bài nộp, ảnh, gói SCORM.
+`filedir` là bất biến — tên tệp chính là hash nội dung — nên nén toàn bộ mỗi ngày
+là chép lại đúng những byte cũ. Restic giữ một bản cho mỗi khối, nhờ vậy lần chạy
+thứ hai khi dữ liệu không đổi chỉ thêm vài trăm byte.
+
+Job trong `scripts/restic-backup.sh` làm ba việc:
+
+1. Khởi tạo `backup/restic` nếu kho chưa có.
+2. Chạy `restic backup /var/www/moodledata` với host `moodle` và tag `files`.
+3. Loại trừ `cache`, `localcache`, `temp`, `sessions`, `muc`, `environment`,
+   `antivirus_quarantine` và `trashdir`. Tất cả đều tái tạo được hoặc dùng xong
+   có thể bỏ.
+
+Không có bước `forget` hay `prune`, nên snapshot tăng dần. Hiện kho khoảng 22 MB
+cho 50 MB dữ liệu; vòng đời và bản ngoài máy chủ là việc còn lại trong
+[LIMITATIONS.vi.md](LIMITATIONS.vi.md#sửa-3-dọn-và-đưa-backup-ra-khỏi-máy-chủ).
+
+Chạy tay và kiểm tra:
+
+```bash
+docker exec moodle_web sh /scripts/restic-backup.sh
+docker exec moodle_web restic snapshots
+docker exec moodle_web restic stats --mode restore-size
+docker exec moodle_web restic check --read-data-subset=5%
+```
+
+Phục hồi ra thư mục tạm, so số tệp, rồi mới chép vào chỗ thật khi đang bảo trì:
+
+```bash
+docker exec moodle_web restic restore latest --target /tmp/restore-test \
+  --include /var/www/moodledata/filedir
+find moodledata/filedir -type f | wc -l
+docker exec moodle_web find /tmp/restore-test/var/www/moodledata/filedir -type f | wc -l
+```
+
+Hai chi tiết dễ làm mất thời gian:
+
+- Kho do `root` trong container ghi, nên đọc bằng `docker exec` hoặc `sudo` từ
+  host.
+- Nếu một lệnh restic bị ngắt giữa chừng (ví dụ pipe vào `head`), nó để lại lock
+  và lần sau báo "repository is already locked". Chỉ gỡ khi không có backup nào
+  đang chạy:
+
+```bash
+docker exec moodle_web restic unlock --remove-all
+```
+
+`RESTIC_PASSWORD` nằm trong `.env` và được truyền vào container. Không có nó thì
+không mở được kho, nên phải giữ một bản ngoài máy chủ. Khi muốn chuyển kho đi nơi
+khác, đặt `RESTIC_REPOSITORY` trong `.env` thành đích `s3:`, `rclone:` hoặc
+`sftp:` rồi chạy `restic init` ở đó một lần.
+
 ## Xử lý sự cố
 
 ### 502 Bad Gateway
@@ -322,14 +376,15 @@ không lịch cron và mốc thời gian trong log sẽ lệch.
 Phân tích đầy đủ nằm trong [LIMITATIONS.vi.md](LIMITATIONS.vi.md). Tóm tắt:
 
 - Chỉ một máy chủ: không failover, không nâng cấp không gián đoạn.
-- `moodledata/` không được sao lưu, bản dump nằm cùng ổ đĩa máy chủ.
+- Restic sao lưu `moodledata/`, nhưng kho nằm cùng ổ đĩa máy chủ.
 - Redis giữ AOF trong `redis_data`; `down -v` vẫn xóa session.
 - Không monitoring, không alert; người dùng phát hiện lỗi trước.
 - Thẻ image động nên rebuild không tái lập được.
 - Nâng cấp thủ công và bản vá usermenu có thể làm hỏng.
 
-Ba rủi ro lớn nhất có cách sửa đề xuất trong
-[LIMITATIONS.vi.md](LIMITATIONS.vi.md#ba-rủi-ro-lớn-nhất). Chưa mục nào được áp dụng.
+Ba rủi ro lớn nhất có ghi chú trong
+[LIMITATIONS.vi.md](LIMITATIONS.vi.md#ba-rủi-ro-lớn-nhất). Restic và volume Redis
+đã áp dụng; việc dọn và đưa backup ra ngoài thì chưa.
 
 ## Việc cần làm định kỳ
 
@@ -339,12 +394,14 @@ Hằng tuần:
 docker compose ps
 docker stats --no-stream
 docker exec moodle_db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM mdl_logstore_standard_log;"'
+docker exec moodle_web restic snapshots --last
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost/
 ```
 
 Hằng tháng:
 
 - Sao chép bản dump mới nhất ra ngoài máy chủ và thử phục hồi.
+- Chạy `restic check --read-data-subset=5%` và thử phục hồi một tệp.
 - Kiểm tra dung lượng trống và `docker system df`.
 - Xem `logs/php` và `logs/moodle` có lỗi lặp lại không.
 - Xác nhận hệ điều hành đã cập nhật bảo mật.
