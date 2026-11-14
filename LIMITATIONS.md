@@ -5,8 +5,9 @@
 An honest list of what this deployment does not do. Severity reflects the impact
 when the problem happens in production, not how likely it is. Two of the three
 highest risks were fixed on 2026-11-13: Redis now has a data volume and
-`moodledata` is backed up with restic. The remaining one, backup retention and
-offsite copies, is still open.
+`moodledata` is backed up with restic. Retention followed on 2026-11-14: the job
+keeps 7 days and prunes the rest. The remaining one, copies outside the server,
+is still open.
 
 ## The three highest risks
 
@@ -14,7 +15,7 @@ offsite copies, is still open.
 |---|---|---|
 | 1 | `moodledata` backup — fixed 2026-11-13 | Was: user files, submissions and uploads existed only on this disk |
 | 2 | Redis data volume — fixed 2026-11-13 | Was: recreating the container logged every user out |
-| 3 | Backups share the server disk and never expire | Disk failure loses both data and copies; the folder grows without bound |
+| 3 | Backups only on the server disk | Disk failure loses every copy; snapshots are pruned after 7 days |
 
 ## Architecture
 
@@ -35,7 +36,6 @@ offsite copies, is still open.
 | File backup is 19 hours behind the dump | A file uploaded after the dump is orphaned on restore, not lost | Low |
 | Backup stored on the same disk | Disk failure or ransomware loses every copy | High |
 | No binlog | No point-in-time recovery; only the last dump | High |
-| Backup files never pruned | `backup/` grows until the disk is full | Medium |
 | Restore never rehearsed | Real RTO unknown; likely 30 to 60 minutes | Medium |
 | `innodb-flush-log-at-trx-commit=2`, `sync-binlog=0` | Up to one second of committed transactions lost on power failure | Medium |
 | No MySQL replica | No second copy to read from or promote | Medium |
@@ -205,30 +205,27 @@ handler, which survives Redis entirely but loses some speed.
 
 ## Fix 3: prune and copy backups off the server
 
-**Current state.** `scripts/db-backup.sh` writes one timestamped dump per run
-plus `moodle_latest.sql`, and never deletes anything. Everything stays on the
-same disk as the database.
+**Status.** Pruning was applied on 2026-11-14: the daily job now runs
+`restic forget --keep-daily 7 --prune` after a successful backup. Copies outside
+the server are still missing, so this section stays open.
 
-**Proposed change.** Keep 14 daily snapshots, 8 weekly and 6 monthly, and copy
-both the dump and the repository to remote storage:
+**Before.** Snapshots accumulated forever, so `backup/` grew without bound.
+
+**Remaining change.** Copy both the dump and the repository to remote storage,
+for example with rclone:
 
 ```bash
-# after a successful dump and a successful restic run
-docker exec moodle_web restic forget --host moodle --tag files \
-  --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
-
 rclone copy backup/moodle_latest.sql remote:moodle/db/
 rclone sync backup/restic remote:moodle/restic
 ```
 
-Two details matter more than the exact numbers:
+Two details matter more than the exact command:
 
-- Prune only after the new dump succeeded, otherwise a failed run deletes the
-  last good copy.
-- Copy off the server after pruning, so the remote copy is the one you just
-  validated.
+- Copy only after the local run succeeded, otherwise the remote copy is older
+  than what you think it is.
+- Keep the rclone credentials in a `600` file, outside the repository.
 
-**Verify.** Confirm the newest dump is recent and readable:
+**Verify.** Confirm the newest dump and snapshot are recent and readable:
 
 ```bash
 ls -lh backup/moodle_latest.sql

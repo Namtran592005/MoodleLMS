@@ -31,4 +31,12 @@ restic backup "$DATA" \
     --exclude=/var/www/moodledata/environment \
     --exclude=/var/www/moodledata/antivirus_quarantine \
     --exclude=/var/www/moodledata/trashdir
+
+# Chi don sau khi backup thanh cong (set -e): giu 7 ban ngay gan nhat.
+echo "[restic] don ban cu, giu 7 ngay"
+restic forget \
+    --host moodle \
+    --tag files \
+    --keep-daily 7 \
+    --prune
 echo "[restic] xong $(date -u '+%F %T UTC')"

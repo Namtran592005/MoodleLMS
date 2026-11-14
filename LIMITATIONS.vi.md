@@ -5,8 +5,8 @@
 Danh sách thẳng thắn những gì bản triển khai này chưa làm được. Mức độ phản ánh
 hậu quả khi sự cố xảy ra trong vận hành thật, không phải khả năng xảy ra. Hai trong
 ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ liệu và `moodledata`
-được sao lưu bằng restic. Rủi ro còn lại, vòng đời backup và bản ngoài máy chủ, vẫn
-đang mở.
+được sao lưu bằng restic. Vòng đời backup được sửa tiếp ngày 14-11-2026: job giữ
+7 ngày rồi dọn phần cũ. Rủi ro còn lại, bản sao ngoài máy chủ, vẫn đang mở.
 
 ## Ba rủi ro lớn nhất
 
@@ -14,7 +14,7 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 |---|---|---|
 | 1 | Backup `moodledata` — đã sửa 13-11-2026 | Trước đây: tệp người dùng, bài nộp, ảnh chỉ tồn tại trên ổ đĩa này |
 | 2 | Volume Redis — đã sửa 13-11-2026 | Trước đây: tạo lại container là mọi người bị đăng xuất |
-| 3 | Backup nằm cùng ổ đĩa và không bao giờ hết hạn | Hỏng đĩa là mất cả dữ liệu lẫn bản sao; thư mục tăng vô hạn |
+| 3 | Backup chỉ nằm trên ổ đĩa máy chủ | Hỏng đĩa là mất toàn bộ bản sao; snapshot bị dọn sau 7 ngày |
 
 ## Kiến trúc
 
@@ -35,7 +35,6 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | Backup tệp chậm hơn dump 19 giờ | Tệp tải lên sau lần dump thành mồ côi khi phục hồi, không mất | Thấp |
 | Backup lưu cùng ổ đĩa | Hỏng đĩa hoặc ransomware là mất toàn bộ bản sao | Cao |
 | Không bật binlog | Không phục hồi theo thời điểm, chỉ có bản dump cuối | Cao |
-| Bản backup không bao giờ được dọn | `backup/` tăng tới khi đầy ổ | Trung bình |
 | Chưa từng diễn tập phục hồi | RTO thực tế chưa biết, ước tính 30 đến 60 phút | Trung bình |
 | `innodb-flush-log-at-trx-commit=2`, `sync-binlog=0` | Mất điện có thể mất tới một giây giao dịch đã commit | Trung bình |
 | Không có MySQL replica | Không có bản thứ hai để đọc hoặc nâng cấp dự phòng | Trung bình |
@@ -203,29 +202,26 @@ khi mất Redis nhưng chậm hơn một chút.
 
 ## Sửa 3: dọn và đưa backup ra khỏi máy chủ
 
-**Hiện trạng.** `scripts/db-backup.sh` ghi một bản dump có mốc thời gian mỗi lần
-chạy, cộng thêm `moodle_latest.sql`, và không bao giờ xóa gì. Tất cả nằm cùng ổ
-đĩa với cơ sở dữ liệu.
+**Trạng thái.** Phần dọn đã áp dụng ngày 14-11-2026: job hằng ngày chạy
+`restic forget --keep-daily 7 --prune` sau khi backup thành công. Bản sao ngoài
+máy chủ vẫn chưa có, nên mục này còn mở.
 
-**Đề xuất.** Giữ 14 snapshot ngày, 8 tuần và 6 tháng, đồng thời đưa cả dump lẫn
-kho restic ra nơi khác:
+**Trước đây.** Snapshot tăng mãi, nên `backup/` lớn dần không giới hạn.
+
+**Việc còn lại.** Đưa cả dump lẫn kho restic ra nơi khác, ví dụ bằng rclone:
 
 ```bash
-# sau khi dump va backup restic thanh cong
-docker exec moodle_web restic forget --host moodle --tag files \
-  --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune
-
 rclone copy backup/moodle_latest.sql remote:moodle/db/
 rclone sync backup/restic remote:moodle/restic
 ```
 
-Hai chi tiết quan trọng hơn con số cụ thể:
+Hai chi tiết quan trọng hơn câu lệnh cụ thể:
 
-- Chỉ dọn sau khi bản dump mới thành công, nếu không một lần lỗi sẽ xóa mất bản
-  tốt cuối cùng.
-- Sao chép ra ngoài sau khi dọn, để bản trên remote chính là bản vừa kiểm tra.
+- Chỉ sao chép sau khi lần chạy tại chỗ thành công, nếu không bản trên remote cũ
+  hơn bạn tưởng.
+- Giữ thông tin đăng nhập rclone trong tệp quyền `600`, ngoài kho mã nguồn.
 
-**Kiểm tra.** Xác nhận bản mới nhất còn mới và đọc được:
+**Kiểm tra.** Xác nhận bản dump và snapshot mới nhất còn mới và đọc được:
 
 ```bash
 ls -lh backup/moodle_latest.sql

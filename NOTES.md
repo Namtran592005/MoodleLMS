@@ -231,10 +231,14 @@ What the job does, in `scripts/restic-backup.sh`:
 2. Run `restic backup /var/www/moodledata` with host `moodle` and tag `files`.
 3. Exclude `cache`, `localcache`, `temp`, `sessions`, `muc`, `environment`,
    `antivirus_quarantine` and `trashdir`. All are regenerated or disposable.
+4. Run `restic forget --keep-daily 7 --prune`, so only the last 7 days remain.
 
-There is no `forget` or `prune` step, so snapshots accumulate. Today the
-repository is about 22 MB for 50 MB of data; retention and offsite copies are
-the remaining task in [LIMITATIONS.md](LIMITATIONS.md#fix-3-prune-and-copy-backups-off-the-server).
+The cleanup runs after the backup, and `set -e` stops the script if the backup
+fails, so a bad run never deletes the last good snapshot. Restic also keeps the
+oldest snapshot while there are fewer than 7 days in the repository; after a
+week the count settles at exactly 7. Today the repository is about 22 MB for
+50 MB of data. Offsite copies are the remaining task in
+[LIMITATIONS.md](LIMITATIONS.md#fix-3-prune-and-copy-backups-off-the-server).
 
 Manual run and checks:
 
@@ -243,6 +247,14 @@ docker exec moodle_web sh /scripts/restic-backup.sh
 docker exec moodle_web restic snapshots
 docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
+```
+
+Prune rewrites pack files, so it needs free space and takes longer as the
+repository grows. If it ever fails on a full disk, the snapshots stay intact;
+free space and run it again:
+
+```bash
+docker exec moodle_web restic forget --host moodle --tag files --keep-daily 7 --prune
 ```
 
 Restore into a scratch directory, compare file counts, then move the result

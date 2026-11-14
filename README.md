@@ -186,6 +186,8 @@ Ofelia runs the dump at 00:00 UTC (07:00 in Vietnam) and the restic job at
 The restic repository lives in `backup/restic`, is encrypted with
 `RESTIC_PASSWORD`, and stores only what changed since the previous snapshot, so
 a second run of unchanged data adds a few hundred bytes instead of a full copy.
+After each successful backup it keeps the last 7 daily snapshots and prunes the
+rest; a failed backup never removes the last good copy.
 
 ```bash
 docker exec moodle_web restic snapshots

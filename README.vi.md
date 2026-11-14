@@ -182,7 +182,8 @@ Ofelia chạy dump lúc 00:00 UTC (07:00 giờ Việt Nam) và job restic lúc 1
 (02:00 giờ Việt Nam), nên tệp được sao lưu sau cơ sở dữ liệu. Kho restic nằm trong
 `backup/restic`, được mã hóa bằng `RESTIC_PASSWORD`, và chỉ lưu phần thay đổi so
 với lần trước: chạy lại khi dữ liệu không đổi chỉ thêm vài trăm byte thay vì một
-bản đầy đủ.
+bản đầy đủ. Sau mỗi lần backup thành công, script giữ 7 bản ngày gần nhất rồi dọn
+phần cũ; một lần backup lỗi không bao giờ xóa bản tốt cuối cùng.
 
 ```bash
 docker exec moodle_web restic snapshots

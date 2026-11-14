@@ -222,16 +222,19 @@ Kết quả mong đợi sau khi thay:
 là chép lại đúng những byte cũ. Restic giữ một bản cho mỗi khối, nhờ vậy lần chạy
 thứ hai khi dữ liệu không đổi chỉ thêm vài trăm byte.
 
-Job trong `scripts/restic-backup.sh` làm ba việc:
+Job trong `scripts/restic-backup.sh` làm bốn việc:
 
 1. Khởi tạo `backup/restic` nếu kho chưa có.
 2. Chạy `restic backup /var/www/moodledata` với host `moodle` và tag `files`.
 3. Loại trừ `cache`, `localcache`, `temp`, `sessions`, `muc`, `environment`,
    `antivirus_quarantine` và `trashdir`. Tất cả đều tái tạo được hoặc dùng xong
    có thể bỏ.
+4. Chạy `restic forget --keep-daily 7 --prune`, chỉ giữ 7 ngày gần nhất.
 
-Không có bước `forget` hay `prune`, nên snapshot tăng dần. Hiện kho khoảng 22 MB
-cho 50 MB dữ liệu; vòng đời và bản ngoài máy chủ là việc còn lại trong
+Bước dọn chạy sau backup, và `set -e` dừng script nếu backup lỗi, nên một lần
+chạy hỏng không bao giờ xóa bản tốt cuối cùng. Restic cũng giữ thêm snapshot cũ
+nhất khi kho chưa đủ 7 ngày; sau một tuần số bản ổn định đúng bằng 7. Hiện kho
+khoảng 22 MB cho 50 MB dữ liệu. Bản ngoài máy chủ là việc còn lại trong
 [LIMITATIONS.vi.md](LIMITATIONS.vi.md#sửa-3-dọn-và-đưa-backup-ra-khỏi-máy-chủ).
 
 Chạy tay và kiểm tra:
@@ -241,6 +244,13 @@ docker exec moodle_web sh /scripts/restic-backup.sh
 docker exec moodle_web restic snapshots
 docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
+```
+
+Prune phải ghi lại các pack, nên cần chỗ trống và chạy lâu hơn khi kho lớn dần.
+Nếu nó lỗi vì đầy ổ, snapshot vẫn nguyên; giải phóng chỗ rồi chạy lại:
+
+```bash
+docker exec moodle_web restic forget --host moodle --tag files --keep-daily 7 --prune
 ```
 
 Phục hồi ra thư mục tạm, so số tệp, rồi mới chép vào chỗ thật khi đang bảo trì:
