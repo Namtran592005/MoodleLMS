@@ -135,24 +135,22 @@ docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
 ```
 
-**Phục hồi.** Dừng site, phục hồi cơ sở dữ liệu, giải nén tệp ra thư mục tạm
-trước rồi mới chép vào `moodledata/`:
+**Phục hồi.** `scripts/restic-restore.sh --in-place` hỏi xác nhận, dừng site, chép
+snapshot đè lên `moodledata/` rồi khởi động lại. Sau đó phục hồi cơ sở dữ liệu và
+xóa cache:
 
 ```bash
-docker compose stop moodle cron
+bash scripts/restic-restore.sh --in-place
 bash scripts/db-restore.sh backup/moodle_latest.sql
-docker exec moodle_web restic restore latest --target /tmp/restore-test \
-  --include /var/www/moodledata/filedir
-cp -a /tmp/restore-test/var/www/moodledata/filedir/. moodledata/filedir/
-rm -rf /tmp/restore-test
-bash scripts/fix-perms.sh
-docker compose start moodle cron
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
+Không có `--in-place`, cùng script đó chỉ phục hồi vào `backup/restore_<thời-gian>`
+và in số tệp, nên chạy được cả khi site đang hoạt động.
+
 **Đánh đổi.** Kho nằm trong `backup/` cùng ổ đĩa, nên nó cứu được sai sót và lỗi
-phần mềm, không cứu được khi mất ổ đĩa. Chưa có bước `forget` hay `prune`, nên
-snapshot tăng dần; đó là Sửa 3. `RESTIC_PASSWORD` giờ quan trọng ngang dữ liệu:
+phần mềm, không cứu được khi mất ổ đĩa. Job giữ 7 snapshot ngày rồi dọn phần cũ;
+bản sao ngoài máy chủ là Sửa 3. `RESTIC_PASSWORD` giờ quan trọng ngang dữ liệu:
 không có nó thì không mở được kho, nên phải giữ một bản ngoài máy chủ.
 
 ## Sửa 2: cấp volume dữ liệu cho Redis (đã áp dụng)

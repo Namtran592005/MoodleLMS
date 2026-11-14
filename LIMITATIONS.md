@@ -137,25 +137,23 @@ docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
 ```
 
-**Restore.** Stop the site, restore the database, extract files into a
-temporary directory first, then move them into `moodledata/`:
+**Restore.** `scripts/restic-restore.sh --in-place` asks for confirmation, stops
+the site, copies the snapshot over `moodledata/` and starts the services again.
+Then restore the database and purge caches:
 
 ```bash
-docker compose stop moodle cron
+bash scripts/restic-restore.sh --in-place
 bash scripts/db-restore.sh backup/moodle_latest.sql
-docker exec moodle_web restic restore latest --target /tmp/restore-test \
-  --include /var/www/moodledata/filedir
-cp -a /tmp/restore-test/var/www/moodledata/filedir/. moodledata/filedir/
-rm -rf /tmp/restore-test
-bash scripts/fix-perms.sh
-docker compose start moodle cron
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
+Without `--in-place` the same script only restores into `backup/restore_<time>`
+and prints the file counts, which is safe to run while the site is up.
+
 **Trade-offs.** The repository sits in `backup/` on the same disk, so it
-protects against mistakes and software faults, not against losing the disk. There
-is no `forget` or `prune` step yet, so snapshots accumulate; that is Fix 3.
-`RESTIC_PASSWORD` is now as important as the data itself: without it the
+protects against mistakes and software faults, not against losing the disk. The
+job keeps 7 daily snapshots and prunes the rest; copies outside the server are
+Fix 3. `RESTIC_PASSWORD` is now as important as the data itself: without it the
 repository cannot be decrypted, so keep a copy outside the server.
 
 ## Fix 2: give Redis a data volume (applied)

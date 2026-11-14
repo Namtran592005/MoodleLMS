@@ -186,16 +186,18 @@ bản đầy đủ. Sau mỗi lần backup thành công, script giữ 7 bản ng
 phần cũ; một lần backup lỗi không bao giờ xóa bản tốt cuối cùng.
 
 ```bash
-docker exec moodle_web restic snapshots
-docker exec moodle_web restic restore latest --target /tmp/restore-test \
-  --include /var/www/moodledata/filedir
+docker exec moodle_web restic snapshots      # xem ID và ngày
+bash scripts/restic-restore.sh              # bản mới nhất -> backup/restore_<thời-gian>
+bash scripts/restic-restore.sh <snapshot>   # một bản cụ thể trong danh sách
+bash scripts/restic-restore.sh --in-place   # bản mới nhất đè lên moodledata/, có xác nhận
 ```
 
-Nên phục hồi ra thư mục tạm trước, rồi mới chép vào `moodledata/` khi site đang bảo
-trì. Phục hồi cơ sở dữ liệu dùng `bash scripts/db-restore.sh <tệp.sql>`. Mất
-`RESTIC_PASSWORD` là mất khả năng đọc kho, nên phải giữ một bản ngoài máy chủ.
-Quy trình từng bước và lưu ý về lock nằm trong
-[NOTES.vi.md](NOTES.vi.md#sao-lưu-tệp-bằng-restic).
+Không có `--in-place`, script chỉ ghi vào `backup/restore_<thời-gian>` và in số tệp,
+nên chạy lúc nào cũng an toàn. Có `--in-place`, script dừng `moodle` và `cron`, chép
+tệp, kiểm tra quyền rồi khởi động lại. Phục hồi cơ sở dữ liệu dùng
+`bash scripts/db-restore.sh <tệp.sql>`. Mất `RESTIC_PASSWORD` là mất khả năng đọc
+kho, nên phải giữ một bản ngoài máy chủ. Quy trình từng bước và lưu ý về lock nằm
+trong [NOTES.vi.md](NOTES.vi.md#sao-lưu-tệp-bằng-restic).
 
 ### Cron
 

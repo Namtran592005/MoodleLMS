@@ -257,15 +257,36 @@ free space and run it again:
 docker exec moodle_web restic forget --host moodle --tag files --keep-daily 7 --prune
 ```
 
-Restore into a scratch directory, compare file counts, then move the result
-into place during maintenance:
+### Restoring files
+
+`scripts/restic-restore.sh` runs on the host and has two modes.
+
+Staging is the default: it restores into `backup/restore_<time>`, changes the
+owner so the deployment account can read the files, and prints the file count of
+the snapshot next to the current count. Nothing under `moodledata/` is touched.
 
 ```bash
-docker exec moodle_web restic restore latest --target /tmp/restore-test \
-  --include /var/www/moodledata/filedir
-find moodledata/filedir -type f | wc -l
-docker exec moodle_web find /tmp/restore-test/var/www/moodledata/filedir -type f | wc -l
+docker exec moodle_web restic snapshots     # find the ID you want
+bash scripts/restic-restore.sh              # newest snapshot
+bash scripts/restic-restore.sh 9711dea3     # a specific snapshot
 ```
+
+In-place is the real recovery: it asks for confirmation, stops `moodle` and
+`cron`, copies the files over `moodledata/`, warns if any file is not owned by
+the deployment account, starts the services again, waits for the health check
+and purges caches.
+
+```bash
+bash scripts/restic-restore.sh --in-place
+bash scripts/db-restore.sh backup/moodle_latest.sql
+docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
+```
+
+The staging copy is kept on purpose, so delete `backup/restore_<time>` only
+after the site looks right. Restoring copies files from the snapshot but does
+not delete files that exist only on disk; those become orphans, which Moodle
+ignores. Copied files keep the container's UID, so ownership stays correct; if
+the script warns about a different owner, run `bash scripts/fix-perms.sh`.
 
 Two details that cost time when forgotten:
 

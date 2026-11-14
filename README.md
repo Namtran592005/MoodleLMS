@@ -190,16 +190,18 @@ After each successful backup it keeps the last 7 daily snapshots and prunes the
 rest; a failed backup never removes the last good copy.
 
 ```bash
-docker exec moodle_web restic snapshots
-docker exec moodle_web restic restore latest --target /tmp/restore-test \
-  --include /var/www/moodledata/filedir
+docker exec moodle_web restic snapshots      # list IDs and dates
+bash scripts/restic-restore.sh              # newest snapshot -> backup/restore_<time>
+bash scripts/restic-restore.sh <snapshot>   # a specific snapshot from the list
+bash scripts/restic-restore.sh --in-place   # newest snapshot over moodledata/, with confirmation
 ```
 
-Restore a snapshot to a temporary directory first, then copy the files into
-`moodledata/` while the site is in maintenance. Database restore uses
-`bash scripts/db-restore.sh <file.sql>`. Losing `RESTIC_PASSWORD` makes the
-repository unreadable, so keep a copy outside the server. Step-by-step
-procedures and the lock caveat are in
+Without `--in-place` the script only writes to `backup/restore_<time>` and prints
+the file counts, so it is safe to run at any time. With `--in-place` it stops
+`moodle` and `cron`, copies the files, checks ownership and starts them again.
+Database restore uses `bash scripts/db-restore.sh <file.sql>`. Losing
+`RESTIC_PASSWORD` makes the repository unreadable, so keep a copy outside the
+server. Step-by-step procedures and the lock caveat are in
 [NOTES.md](NOTES.md#restic-file-backup).
 
 ### Cron

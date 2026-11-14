@@ -253,14 +253,34 @@ Nếu nó lỗi vì đầy ổ, snapshot vẫn nguyên; giải phóng chỗ rồ
 docker exec moodle_web restic forget --host moodle --tag files --keep-daily 7 --prune
 ```
 
-Phục hồi ra thư mục tạm, so số tệp, rồi mới chép vào chỗ thật khi đang bảo trì:
+### Phục hồi tệp
+
+`scripts/restic-restore.sh` chạy trên host và có hai chế độ.
+
+Mặc định là phục hồi ra thư mục tạm: ghi vào `backup/restore_<thời-gian>`, đổi chủ
+sở hữu để tài khoản triển khai đọc được, rồi in số tệp của bản phục hồi bên cạnh số
+tệp đang dùng. Không đụng gì trong `moodledata/`.
 
 ```bash
-docker exec moodle_web restic restore latest --target /tmp/restore-test \
-  --include /var/www/moodledata/filedir
-find moodledata/filedir -type f | wc -l
-docker exec moodle_web find /tmp/restore-test/var/www/moodledata/filedir -type f | wc -l
+docker exec moodle_web restic snapshots     # tim ID can dung
+bash scripts/restic-restore.sh              # ban moi nhat
+bash scripts/restic-restore.sh 9711dea3     # mot ban cu the
 ```
+
+`--in-place` là phục hồi thật: hỏi xác nhận, dừng `moodle` và `cron`, chép tệp đè
+lên `moodledata/`, cảnh báo nếu còn tệp không thuộc tài khoản triển khai, khởi động
+lại, chờ health check và xóa cache.
+
+```bash
+bash scripts/restic-restore.sh --in-place
+bash scripts/db-restore.sh backup/moodle_latest.sql
+docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
+```
+
+Bản tạm được giữ lại có chủ đích, nên chỉ xóa `backup/restore_<thời-gian>` sau khi
+đã kiểm tra site. Phục hồi chỉ chép tệp từ snapshot, không xóa tệp chỉ có trên đĩa;
+những tệp đó thành mồ côi và Moodle bỏ qua. Tệp chép sang giữ UID của container nên
+quyền vẫn đúng; nếu script cảnh báo chủ sở hữu khác, chạy `bash scripts/fix-perms.sh`.
 
 Hai chi tiết dễ làm mất thời gian:
 
