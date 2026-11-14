@@ -215,6 +215,46 @@ Kết quả mong đợi sau khi thay:
 | `/theme/boost/style/moodle.css` | 200 |
 | `/login/index.php` | 200 |
 
+### Bản dump cơ sở dữ liệu
+
+`scripts/db-job.sh` chạy trong `moodle_db`; Ofelia gọi lúc `@daily` (00:00 UTC).
+Mỗi lần chạy ghi `backup/moodle_<thời-gian>.sql` với tên tới giây, cập nhật
+`moodle_latest.sql` qua tệp tạm, rồi xóa các bản theo ngày cũ hơn 7 ngày:
+
+```sh
+find /backup -maxdepth 1 -type f -name 'moodle_*.sql' \
+  ! -name 'moodle_latest.sql' -mtime +6 -delete
+```
+
+`-mtime +6` giữ hôm nay và 6 ngày trước đó. Bước dọn chạy sau khi dump thành công,
+và `set -e` dừng script nếu `mysqldump` lỗi, nên lần chạy hỏng không bao giờ xóa
+bản tốt cuối cùng.
+
+Container cơ sở dữ liệu chạy bằng `root`, nên job đổi chủ sở hữu tệp mới về chủ
+của `/backup`. Không có bước đó, tài khoản trên host đọc được nhưng không ghi đè
+được `moodle_latest.sql` ở lần chạy tay sau. Bản mới có quyền `600` vì chứa dữ
+liệu người dùng. Backup tay từ host cũng đi qua đúng job này:
+
+```bash
+bash scripts/db-backup.sh
+```
+
+Máy chủ bật GTID, nên job truyền `--set-gtid-purged=OFF`. Bản dump còn câu lệnh
+`GTID_PURGED` không import được vào chính máy chủ đó: MySQL báo lỗi 3546 vì tập
+GTID chồng lên `GTID_EXECUTED`. `scripts/db-restore.sh` cũng bỏ dòng đó, nên các
+bản dump tạo trước thay đổi này vẫn phục hồi được.
+
+Mỗi bản dump là tệp SQL khoảng 22 MB, nên 7 ngày tốn khoảng 154 MB. Khi muốn xóa
+toàn bộ, kể cả `moodle_latest.sql`:
+
+```bash
+bash scripts/db-clean.sh --dry-run
+bash scripts/db-clean.sh
+```
+
+Script liệt kê tệp và tổng dung lượng rồi hỏi gõ `XOA`. Nó không đụng tới
+`backup/restic` hay `moodledata/`.
+
 ### Sao lưu tệp bằng restic
 
 `moodledata` chứa nội dung thật của người dùng: bài nộp, ảnh, gói SCORM.

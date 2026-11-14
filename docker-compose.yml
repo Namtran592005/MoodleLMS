@@ -85,13 +85,14 @@ services:
     volumes:
       - moodle_db_data:/var/lib/mysql
       - ./backup:/backup
+      - ./scripts:/scripts:ro
       - ./logs/mysql:/var/log/mysql
     networks:
       - moodle_net
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.db-backup.schedule=@daily"
-      - "ofelia.job-exec.db-backup.command=bash -c 'mysqldump -u root -p\"$$MYSQL_ROOT_PASSWORD\" --default-character-set=utf8mb4 --single-transaction --quick $$MYSQL_DATABASE > /backup/moodle_latest.sql'"
+      - "ofelia.job-exec.db-backup.command=nice -n 19 sh /scripts/db-job.sh"
 
   redis:
     image: redis:latest

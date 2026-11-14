@@ -181,6 +181,16 @@ bash scripts/db-backup.sh                 # dump to backup/moodle_<time>.sql and
 bash scripts/restic-backup.sh             # incremental backup of moodledata
 ```
 
+The database job writes a dated dump and refreshes `moodle_latest.sql`, then
+deletes dated dumps older than 7 days; a failed dump never removes the previous
+copies. `scripts/db-clean.sh` removes every database dump, including
+`moodle_latest.sql`, when you really want a clean slate:
+
+```bash
+bash scripts/db-clean.sh --dry-run   # list the files and their total size
+bash scripts/db-clean.sh             # delete them, confirmation XOA
+```
+
 Ofelia runs the dump at 00:00 UTC (07:00 in Vietnam) and the restic job at
 19:00 UTC (02:00 in Vietnam), so files are copied after the database.
 The restic repository lives in `backup/restic`, is encrypted with
@@ -212,7 +222,7 @@ Database restore uses `bash scripts/db-restore.sh <file.sql>`. Losing
 server. Step-by-step procedures and the lock caveat are in
 [NOTES.md](NOTES.md#restic-file-backup).
 
-To drop the backup history, use `scripts/restic-clean.sh`: by default it removes
+To drop the restic history, use `scripts/restic-clean.sh`: by default it removes
 every snapshot but keeps the repository and the password, `--repo` removes the
 repository directory too, and `--dry-run` only prints what it would do. Both
 destructive modes ask you to type `XOA` to confirm.

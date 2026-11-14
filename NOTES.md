@@ -218,6 +218,49 @@ Expected results after the change:
 | `/theme/boost/style/moodle.css` | 200 |
 | `/login/index.php` | 200 |
 
+### Database dumps
+
+`scripts/db-job.sh` runs inside `moodle_db`; Ofelia calls it at `@daily`
+(00:00 UTC). Each run writes `backup/moodle_<time>.sql` with a second-precision
+name, refreshes `moodle_latest.sql` through a temporary file, then deletes dated
+dumps older than 7 days:
+
+```sh
+find /backup -maxdepth 1 -type f -name 'moodle_*.sql' \
+  ! -name 'moodle_latest.sql' -mtime +6 -delete
+```
+
+`-mtime +6` keeps today plus the previous six days. The prune runs after a
+successful dump, and `set -e` stops the script if `mysqldump` fails, so a failed
+run never removes the last good file.
+
+The database container runs as `root`, so the job chowns the new files to the
+owner of `/backup`. Without that, the host account could read a dump but not
+overwrite `moodle_latest.sql` on the next manual run. New dumps are mode `600`
+because they contain user data. Manual backups from the host go through the same
+job:
+
+```bash
+bash scripts/db-backup.sh
+```
+
+The server runs with GTID enabled, so the job passes `--set-gtid-purged=OFF`.
+A dump that keeps the `GTID_PURGED` statement cannot be imported into the same
+server: MySQL fails with error 3546 because the set overlaps
+`GTID_EXECUTED`. `scripts/db-restore.sh` also strips that line, so dumps made
+before this change still restore.
+
+A dump is a plain SQL file of about 22 MB, so 7 days is roughly 154 MB. To
+delete every dump, including `moodle_latest.sql`:
+
+```bash
+bash scripts/db-clean.sh --dry-run
+bash scripts/db-clean.sh
+```
+
+The script lists the files and the total size, then asks for `XOA`. It never
+touches `backup/restic` or `moodledata/`.
+
 ### Restic file backup
 
 `moodledata` holds the real user content: submissions, images, SCORM packages.

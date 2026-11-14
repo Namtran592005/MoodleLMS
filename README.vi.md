@@ -178,6 +178,16 @@ bash scripts/db-backup.sh                 # dump vào backup/moodle_<thời-gian
 bash scripts/restic-backup.sh             # backup tăng dần moodledata
 ```
 
+Job cơ sở dữ liệu ghi một bản theo ngày và cập nhật `moodle_latest.sql`, rồi xóa
+các bản theo ngày cũ hơn 7 ngày; dump lỗi không bao giờ xóa bản cũ. Khi thật sự
+muốn dọn sạch, `scripts/db-clean.sh` xóa toàn bộ bản dump, kể cả
+`moodle_latest.sql`:
+
+```bash
+bash scripts/db-clean.sh --dry-run   # liệt kê tệp và tổng dung lượng
+bash scripts/db-clean.sh             # xóa, hỏi gõ XOA
+```
+
 Ofelia chạy dump lúc 00:00 UTC (07:00 giờ Việt Nam) và job restic lúc 19:00 UTC
 (02:00 giờ Việt Nam), nên tệp được sao lưu sau cơ sở dữ liệu. Kho restic nằm trong
 `backup/restic`, được mã hóa bằng `RESTIC_PASSWORD`, và chỉ lưu phần thay đổi so
@@ -207,7 +217,7 @@ tệp, kiểm tra quyền rồi khởi động lại. Phục hồi cơ sở dữ
 kho, nên phải giữ một bản ngoài máy chủ. Quy trình từng bước và lưu ý về lock nằm
 trong [NOTES.vi.md](NOTES.vi.md#sao-lưu-tệp-bằng-restic).
 
-Khi cần bỏ lịch sử backup, dùng `scripts/restic-clean.sh`: mặc định xóa toàn bộ
+Khi cần bỏ lịch sử restic, dùng `scripts/restic-clean.sh`: mặc định xóa toàn bộ
 snapshot nhưng giữ kho và mật khẩu, `--repo` xóa cả thư mục kho, `--dry-run` chỉ
 in ra sẽ làm gì. Cả hai chế độ xóa đều hỏi gõ `XOA` để xác nhận.
 
