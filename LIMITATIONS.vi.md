@@ -64,6 +64,8 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | Thẻ image động (`mysql:9`, `redis:latest`, `ofelia:latest`) | Rebuild không tái lập được, nâng cấp đến mà không báo trước | Trung bình |
 | Không quét hay ký image | Image nền có lỗ hổng mà không biết | Trung bình |
 | Không bắt buộc 2FA hay SSO | Chỉ mật khẩu, không có định danh tập trung | Trung bình |
+| CSP vẫn cần `'unsafe-inline'` và `'unsafe-eval'` | Moodle in script nội tuyến và TinyMCE gọi `new Function`, nên script chèn trong trang không bị chặn | Trung bình |
+| CSP chỉ cho phép YouTube | Vimeo, Google Drive và ảnh ngoài trong nội dung khóa học bị chặn có chủ đích | Thấp |
 | Không antivirus cho tệp tải lên | Tệp độc hại được lưu và phục vụ | Thấp |
 | Log chỉ nằm trên đĩa cục bộ | Kẻ xâm nhập có thể xóa dấu vết | Thấp |
 

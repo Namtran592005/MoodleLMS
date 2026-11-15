@@ -65,6 +65,8 @@ is still open.
 | Mutable image tags (`mysql:9`, `redis:latest`, `ofelia:latest`) | Rebuilds are not reproducible; upgrades arrive unannounced | Medium |
 | No image scanning or signing | Vulnerable base images go unnoticed | Medium |
 | No enforced 2FA or SSO | Password-only accounts, no central identity | Medium |
+| CSP still needs `'unsafe-inline'` and `'unsafe-eval'` | Moodle prints inline scripts and TinyMCE calls `new Function`, so injected inline script is not blocked | Medium |
+| CSP allows only YouTube | Vimeo, Google Drive and external images in course content are blocked by design | Low |
 | No antivirus on uploads | Malicious files are stored and served | Low |
 | Logs only on local disk | An attacker who gets in can erase the evidence | Low |
 

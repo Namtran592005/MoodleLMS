@@ -196,6 +196,35 @@ to 14.3 KB and login from 45 KB to about 10 KB.
 Apache already compresses CSS and JavaScript with `gzip`, so Caddy passes those
 through instead of encoding them twice.
 
+## Security headers
+
+`Caddyfile` sets the response headers for every page: `Server`,
+`X-Content-Type-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy`,
+`Permissions-Policy` and `Content-Security-Policy`. The site identifies itself as
+`LMS-System`. The policy uses only `'self'` for the system itself, so it works on
+any domain or port without editing.
+
+YouTube is the only external source allowed. The videojs player loads
+`https://www.youtube.com/iframe_api` as a script, shows posters from
+`https://img.youtube.com`, and embeds the player from `youtube-nocookie.com` or
+`youtube.com`. Everything else is refused: Vimeo, Google Drive and external
+images in course content are blocked. The theme does not load Google Fonts, so
+`fonts.googleapis.com` and `fonts.gstatic.com` are not in the policy.
+
+`script-src` still needs `'unsafe-inline'` and `'unsafe-eval'`. Moodle prints
+inline scripts on every page and TinyMCE calls `new Function`, so a nonce-based
+policy is not possible without patching core.
+
+Check a change with a temporary page in the webroot, then delete it:
+
+```html
+<img src="https://example.com/logo.png">
+<img src="https://img.youtube.com/vi/ID/0.jpg">
+```
+
+The first must be blocked and the second must load. The browser console names
+every blocked resource with the directive that refused it.
+
 ## Sizing by load
 
 | Item | Around 100 concurrent users | Around 1000 concurrent users |

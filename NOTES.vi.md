@@ -196,6 +196,35 @@ nhập từ 45 KB xuống khoảng 10 KB.
 Apache đã nén CSS và JavaScript bằng `gzip`, nên Caddy chuyển tiếp nguyên trạng
 thay vì nén hai lần.
 
+## Header bảo mật
+
+`Caddyfile` đặt header cho mọi trang: `Server`, `X-Content-Type-Options`,
+`Referrer-Policy`, `Cross-Origin-Opener-Policy`, `Permissions-Policy` và
+`Content-Security-Policy`. Hệ thống tự nhận là `LMS-System`. Chính sách chỉ dùng
+`'self'` cho bản thân hệ thống, nên chạy được trên bất kỳ domain hay cổng nào mà
+không phải sửa.
+
+YouTube là nguồn ngoài duy nhất được phép. Trình phát videojs nạp
+`https://www.youtube.com/iframe_api` dưới dạng script, hiện ảnh poster từ
+`https://img.youtube.com`, và nhúng trình phát từ `youtube-nocookie.com` hoặc
+`youtube.com`. Mọi nguồn khác bị chặn: Vimeo, Google Drive và ảnh ngoài trong nội
+dung khóa học đều không tải được. Theme không nạp Google Fonts, nên
+`fonts.googleapis.com` và `fonts.gstatic.com` không có trong chính sách.
+
+`script-src` vẫn cần `'unsafe-inline'` và `'unsafe-eval'`. Moodle in script nội
+tuyến trên mọi trang và TinyMCE gọi `new Function`, nên không thể dùng nonce nếu
+không sửa core.
+
+Muốn kiểm tra sau khi đổi, đặt một trang tạm trong webroot rồi xóa đi:
+
+```html
+<img src="https://example.com/logo.png">
+<img src="https://img.youtube.com/vi/ID/0.jpg">
+```
+
+Ảnh thứ nhất phải bị chặn, ảnh thứ hai phải tải được. Console trình duyệt ghi rõ
+từng tài nguyên bị chặn kèm directive đã từ chối nó.
+
 ## Quy mô theo tải
 
 | Hạng mục | Khoảng 100 người dùng đồng thời | Khoảng 1000 người dùng đồng thời |

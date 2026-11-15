@@ -8,13 +8,13 @@
 		encode gzip
 
 		header {
-			Server "TVC-LMS-Cloud"
+			Server "LMS-System"
 			X-Content-Type-Options "nosniff"
 			Referrer-Policy "strict-origin-when-cross-origin"
 			Cross-Origin-Opener-Policy "same-origin"
 			Permissions-Policy "unload=*"
 			-Via
-			Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob: data: *.youtube.com *.google.com *.vimeo.com; frame-src 'self' *.youtube.com *.google.com *.vimeo.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' blob: data:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
+			Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com; font-src 'self' data:; media-src 'self' blob: data:; connect-src 'self' blob:; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; worker-src 'self' blob:; manifest-src 'self'"
 		}
 
 		rate_limit {
@@ -46,7 +46,7 @@
 
 	handle_errors {
 		header {
-			Server "TVC-LMS-Cloud"
+			Server "LMS-System"
 			-Via
 		}
 		respond "{err.status_code} {err.status_text}" {err.status_code}
