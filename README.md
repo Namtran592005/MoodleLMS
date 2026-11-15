@@ -22,7 +22,7 @@ Sizing, tuning and fixes for problems seen in operation are in
 | `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | internal 3306 |
 | `redis` | `redis:latest` | Cache and sessions, 256 MB limit | internal 6379 |
 | `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | internal 80 |
-| `cron` | `mcuadros/ofelia` | Moodle cron, daily backup, log rotation | not exposed |
+| `cron` | `mcuadros/ofelia` | Moodle cron, database dump, restic backup, log rotation | not exposed |
 
 Only `caddy` publishes ports; the other services are reachable only inside
 `moodle_net`.
@@ -78,8 +78,10 @@ chmod 600 .env
 | `RESTIC_REPOSITORY` | Optional, defaults to `/backup/restic` |
 | `TZ` | Time zone, defaults to `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
-| `PUID`, `PGID` | Optional, used to force a specific UID/GID |
-| `APACHE_MAX_REQUEST_WORKERS`, `PHP_FPM_MAX_CHILDREN` | Worker counts, computed automatically by default |
+| `PUID`, `PGID` | UID/GID for `www-data`, defaults to `1000` |
+| `APACHE_MAX_REQUEST_WORKERS`, `APACHE_START_SERVERS` | Apache thread and process counts, computed automatically when empty |
+| `PHP_FPM_MAX_CHILDREN` | PHP-FPM children, defaults to `24` |
+| `MOODLE_WORKER_MEM_MB`, `MOODLE_MEM_RESERVE_MB` | Memory budget per worker and memory kept for other services |
 | `COMPOSE_PROJECT_NAME` | Keeps volume and network names stable |
 
 Worker sizing, memory behaviour and load-based values are covered in

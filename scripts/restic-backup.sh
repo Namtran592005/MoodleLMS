@@ -1,8 +1,5 @@
 #!/bin/bash
 set -e
-# Usage: bash scripts/restic-backup.sh
-# Chay tren host. Viec backup van thuc hien trong container moodle
-# (noi co restic va duong dan /var/www/moodledata).
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

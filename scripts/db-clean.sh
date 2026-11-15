@@ -1,9 +1,5 @@
 #!/bin/bash
 set -e
-# Usage: bash scripts/db-clean.sh [--dry-run]
-# Xoa toan bo ban dump co so du lieu: ca moodle_latest.sql lan moodle_<thoi-gian>.sql.
-# Khong dong den kho restic hay moodledata. Ban tu dong giu 7 ngay da co trong
-# scripts/db-job.sh, chi dung script nay khi that su muon don sach.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

@@ -1,7 +1,3 @@
-#=============================================================================
-# Moodle 5.x - /public/.htaccess
-#=============================================================================
-
 <IfModule mod_mime.c>
     AcceptPathInfo On
 </IfModule>
@@ -40,13 +36,6 @@ Options -Indexes
     ExpiresByType application/javascript "access plus 1 month"
 </IfModule>
 
-#=============================================================================
-# Chan file nguon/schema nam trong webroot
-# Moodle 5.x dat mot so file build/schema trong public/. Cac file nay chi
-# duoc doc boi PHP, khong duoc phep tai qua HTTP.
-#=============================================================================
-
-# 1) File schema va metadata cua core/plugin
 <FilesMatch "^(install\.xml|environment\.xml|role_schema\.xml|thirdpartylibs\.xml|apis\.json|licenses\.json)$">
     <IfModule mod_authz_core.c>
         Require all denied
@@ -57,7 +46,6 @@ Options -Indexes
     </IfModule>
 </FilesMatch>
 
-# 2) File *.schema.json (plugins, apis, subplugins)
 <FilesMatch "\.schema\.json$">
     <IfModule mod_authz_core.c>
         Require all denied
@@ -68,7 +56,4 @@ Options -Indexes
     </IfModule>
 </FilesMatch>
 
-# 3) Thu muc chi dung cho dev/test.
-# KHONG chan ca /lib/: /lib/yuilib/ va /lib/editor/ van phai tai duoc.
 RedirectMatch 404 "^/lib/(db|tests|phpunit)/"
-

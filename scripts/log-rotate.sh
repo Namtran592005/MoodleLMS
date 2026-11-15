@@ -1,7 +1,5 @@
 #!/bin/sh
 set -e
-# Usage: sh scripts/log-rotate.sh
-# copytruncate: cac service deu ghi append nen an toan
 
 D=$(date +%F)
 

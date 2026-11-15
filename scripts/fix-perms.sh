@@ -1,6 +1,4 @@
 #!/bin/sh
-# Usage: sh scripts/fix-perms.sh
-# Chuẩn hóa owner về user SSH hiện tại; .env phải thuộc user này để đọc được
 set -e
 cd "$(dirname "$0")/.."
 
@@ -21,7 +19,6 @@ for f in .env docker-compose.yml Caddyfile; do
 done
 [ -f .env ] && sudo chmod 600 .env
 
-# thu muc 755, file 644; giu nguyen thu muc 700 (vd moodledata/sessions)
 for d in moodle moodledata; do
   [ -d "$d" ] || continue
   find "$d" -perm -o+w -type d -exec chmod 755 {} +

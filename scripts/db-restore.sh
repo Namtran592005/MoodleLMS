@@ -1,7 +1,5 @@
 #!/bin/bash
 set -e
-# Usage: bash scripts/db-restore.sh [path/to/file.sql]
-# Doc thong tin ket noi tu container, khong doc .env tren host
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -16,8 +14,6 @@ DB=$(docker exec moodle_db sh -c 'printf %s "$MYSQL_DATABASE"')
 read -p "Restore $FILE -> DB $DB? [y/N] " CONFIRM
 [[ "$CONFIRM" =~ ^[yY]$ ]] || { echo "Cancelled."; exit 0; }
 
-# Bo dong GTID_PURGED cua cac ban dump cu: server bat GTID nen dong do
-# lam import that bai (loi 3546). Ban dump moi da dung --set-gtid-purged=OFF.
 sed -E '/^SET @@GLOBAL\.GTID_PURGED/d' "$FILE" \
   | docker exec -i moodle_db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root --default-character-set=utf8mb4 "$MYSQL_DATABASE"'
 

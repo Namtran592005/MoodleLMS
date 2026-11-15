@@ -1,6 +1,5 @@
 FROM php:8.5-fpm
 
-# www-data theo UID/GID cua host
 ARG PUID=1000
 ARG PGID=1000
 
@@ -30,7 +29,6 @@ ENV LANG=en_US.UTF-8 \
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Uu tien GitHub, fallback pecl
 ARG PHPREDIS_VERSION=6.3.0
 
 RUN set -eux; \
@@ -51,14 +49,12 @@ RUN set -eux; \
     fi; \
     docker-php-ext-enable redis
 
-# OPcache va sodium co san trong base image
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
     gd mysqli zip intl soap xsl mbstring exif bcmath sockets
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
-# Apache event + PHP-FPM, khong dung mod_php/prefork
 RUN set -eux; \
     a2dismod mpm_prefork || true; \
     a2enmod mpm_event proxy proxy_fcgi rewrite headers; \
@@ -77,7 +73,6 @@ RUN { \
     echo '</Directory>'; \
     } >> /etc/apache2/apache2.conf
 
-# SetHandler giu PATH_INFO cho URL kieu /lib/requirejs.php/...
 RUN { \
     echo '<FilesMatch "\.php$">'; \
     echo '    SetHandler "proxy:fcgi://127.0.0.1:9000"'; \
@@ -111,7 +106,6 @@ RUN { \
     echo 'opcache.jit_buffer_size=100M'; \
     } > /usr/local/etc/php/conf.d/moodle-optimizations.ini
 
-# An phien ban Apache
 RUN { \
     echo 'ServerTokens Prod'; \
     echo 'ServerSignature Off'; \

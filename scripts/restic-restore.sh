@@ -1,11 +1,5 @@
 #!/bin/bash
 set -e
-# Usage: bash scripts/restic-restore.sh [snapshot] [--in-place]
-#   snapshot    latest (mac dinh) hoac ID lay tu "restic snapshots"
-#   --in-place  chep de len moodledata/ ngay, co dung site trong luc chep
-#
-# Mac dinh chi phuc hoi ra backup/restore_<thoi-gian>, khong dung du lieu that.
-# Chay tren host, trong thu muc project.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

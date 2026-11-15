@@ -21,7 +21,7 @@ Phần tính toán RAM, tinh chỉnh và cách xử lý lỗi nằm trong
 | `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | nội bộ 3306 |
 | `redis` | `redis:latest` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
 | `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | nội bộ 80 |
-| `cron` | `mcuadros/ofelia` | Cron Moodle, backup hằng ngày, xoay log | không mở |
+| `cron` | `mcuadros/ofelia` | Cron Moodle, dump DB, backup restic, xoay log | không mở |
 
 Chỉ `caddy` mở cổng ra ngoài; các dịch vụ còn lại chỉ truy cập được trong mạng
 `moodle_net`.
@@ -75,8 +75,10 @@ chmod 600 .env
 | `RESTIC_REPOSITORY` | Tùy chọn, mặc định `/backup/restic` |
 | `TZ` | Múi giờ, mặc định `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
-| `PUID`, `PGID` | Không bắt buộc, dùng khi cần ép UID/GID |
-| `APACHE_MAX_REQUEST_WORKERS`, `PHP_FPM_MAX_CHILDREN` | Số worker, mặc định tự tính |
+| `PUID`, `PGID` | UID/GID cho `www-data`, mặc định `1000` |
+| `APACHE_MAX_REQUEST_WORKERS`, `APACHE_START_SERVERS` | Số thread và process Apache, để trống thì tự tính |
+| `PHP_FPM_MAX_CHILDREN` | Số tiến trình PHP-FPM, mặc định `24` |
+| `MOODLE_WORKER_MEM_MB`, `MOODLE_MEM_RESERVE_MB` | RAM cho mỗi worker và RAM chừa cho dịch vụ khác |
 | `COMPOSE_PROJECT_NAME` | Giữ tên volume và network ổn định |
 
 Cách tính worker, hành vi bộ nhớ và giá trị theo tải có trong

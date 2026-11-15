@@ -1,8 +1,5 @@
 #!/bin/bash
 set -e
-# Usage: bash scripts/db-backup.sh
-# Chay tren host; viec dump thuc hien trong container moodle_db
-# (noi co mysqldump va duong dan /backup).
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

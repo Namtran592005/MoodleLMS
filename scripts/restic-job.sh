@@ -1,7 +1,4 @@
 #!/bin/sh
-# Sao luu moodledata bang restic.
-# Chay trong container moodle: RESTIC_PASSWORD lay tu .env,
-# repo dat tai /backup/restic (bind mount ./backup).
 set -eu
 
 : "${RESTIC_PASSWORD:?RESTIC_PASSWORD chua duoc dat trong .env}"
@@ -32,7 +29,6 @@ restic backup "$DATA" \
     --exclude=/var/www/moodledata/antivirus_quarantine \
     --exclude=/var/www/moodledata/trashdir
 
-# Chi don sau khi backup thanh cong (set -e): giu 7 ban ngay gan nhat.
 echo "[restic] don ban cu, giu 7 ngay"
 restic forget \
     --host moodle \

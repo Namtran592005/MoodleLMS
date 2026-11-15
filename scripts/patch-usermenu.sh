@@ -1,12 +1,4 @@
 #!/bin/sh
-# Vá lỗi usermenu trên trang guest của Moodle 5.3.
-#
-# Trên trang chưa đăng nhập, .usermenu không có .dropdown-menu. Khi resize,
-# initTruncationTooltips() đọc classList của null và báo TypeError trong console.
-# Script thêm null guard vào cả source và bản build AMD.
-#
-# Usage: sh scripts/patch-usermenu.sh [public_dir]
-# Default public_dir: moodle/public
 set -eu
 
 cd "$(dirname "$0")/.."

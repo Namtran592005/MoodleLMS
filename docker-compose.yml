@@ -18,7 +18,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    # access.log 644 de user host doc duoc
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -53,7 +52,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
-    # root de sua owner log truoc khi mysqld drop user
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -167,10 +165,8 @@ services:
       MOODLE_DB_NAME: ${MOODLE_DB_NAME}
       MOODLE_DB_USER: ${MOODLE_DB_USER}
       MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
-      # doi sang rclone:/... hoac s3:... khi can day backup ra ngoai
       RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-/backup/restic}
       RESTIC_PASSWORD: ${RESTIC_PASSWORD}
-      # de trong = tu tinh theo CPU/RAM
       APACHE_MAX_REQUEST_WORKERS: ${APACHE_MAX_REQUEST_WORKERS:-}
       APACHE_START_SERVERS: ${APACHE_START_SERVERS:-}
       PHP_FPM_MAX_CHILDREN: ${PHP_FPM_MAX_CHILDREN:-24}
@@ -187,10 +183,8 @@ services:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.moodle-cron.schedule=@every 1m"
       - "ofelia.job-exec.moodle-cron.command=setpriv --reuid www-data --regid www-data --init-groups php /var/www/html/admin/cli/cron.php --keep-alive=0"
-      # 17h UTC = 0h VN. Ofelia 0.3.x can len 6 truong, truong dau la giay.
       - "ofelia.job-exec.logs-rotate.schedule=0 0 17 * * *"
       - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
-      # 19h UTC = 2h VN
       - "ofelia.job-exec.restic-backup.schedule=0 0 19 * * *"
       - "ofelia.job-exec.restic-backup.command=nice -n 19 sh /scripts/restic-job.sh"
 
@@ -198,7 +192,6 @@ services:
     image: mcuadros/ofelia:latest
     container_name: moodle_cron_scheduler
     restart: always
-    # Ofelia tang RAM theo thoi gian (upstream #157)
     mem_limit: 256m
     memswap_limit: 256m
     logging: *default-logging

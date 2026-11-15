@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# UID/GID: PUID/PGID hoac owner cua moodle/
 detect_ids() {
   if [ -n "${PUID:-}" ] && [ -n "${PGID:-}" ]; then
     echo "${PUID} ${PGID}"
@@ -11,7 +10,6 @@ detect_ids() {
     [ -d "$d" ] || continue
     u="$(stat -c %u "$d")"
     g="$(stat -c %g "$d")"
-    # bo qua root/UID he thong (< 1000)
     if [ "$u" -ge 1000 ] 2>/dev/null; then
       echo "${u} ${g}"
       return
@@ -32,7 +30,6 @@ echo "www-data = $(id -u www-data):$(id -g www-data)"
 mkdir -p /var/www/moodledata /var/log/moodle /var/log/php \
          /logs/caddy /logs/mysql /logs/redis
 
-# db/redis ghi /logs/mysql va /logs/redis
 chown -R "${U}:${G}" /logs/caddy /var/log/moodle /var/log/php 2>/dev/null || true
 chown "${U}:${G}" /logs /backup 2>/dev/null || true
 chown -R "${U}:${G}" /backup 2>/dev/null || true
@@ -46,14 +43,12 @@ for d in /logs/mysql /logs/redis; do
 done
 chmod -R a+rX /logs /var/log/moodle /var/log/php 2>/dev/null || true
 
-# chi chown khi co file lech owner
 ensure_owner() {
   dir="$1"
   [ -d "$dir" ] || return 0
   if [ -n "$(find "$dir" \( ! -user "$U" -o ! -group "$G" -o -perm -o+w \) -print -quit 2>/dev/null)" ]; then
     echo "Fixing ownership in $dir ..."
     chown -R "${U}:${G}" "$dir" || true
-    # ha quyen 777 cu, giu thu muc 700
     find "$dir" -perm -o+w -type d -exec chmod 755 {} + 2>/dev/null || true
     find "$dir" -perm -o+w -type f -exec chmod u+rwX,go+r-w {} + 2>/dev/null || true
   fi
@@ -68,7 +63,6 @@ if [ -f "/var/www/html/composer.json" ]; then
     composer install --no-dev --classmap-authoritative --no-interaction
 fi
 
-# Tinh worker theo CPU/RAM; ghi de bang APACHE_MAX_REQUEST_WORKERS
 configure_apache_mpm() {
   conf=/etc/apache2/mods-enabled/mpm_event.conf
   if [ ! -f "$conf" ]; then
@@ -79,7 +73,6 @@ configure_apache_mpm() {
   cpus="$(nproc 2>/dev/null || echo 2)"
   [ "$cpus" -ge 1 ] 2>/dev/null || cpus=2
 
-  # Docker co the gioi han CPU bang cgroup
   if [ -r /sys/fs/cgroup/cpu.max ]; then
     read -r quota period < /sys/fs/cgroup/cpu.max || true
     if [ -n "${quota:-}" ] && [ "$quota" != "max" ] && [ "${period:-0}" -gt 0 ] 2>/dev/null; then
@@ -113,7 +106,6 @@ configure_apache_mpm() {
     limit_mb="$host_mb"
   fi
 
-  # Giu RAM cho MySQL, Redis, Caddy, Ofelia va OS
   if [ -n "${MOODLE_MEM_RESERVE_MB:-}" ]; then
     reserve_mb="$MOODLE_MEM_RESERVE_MB"
   elif [ "$limit_mb" -lt $((host_mb * 9 / 10)) ]; then
@@ -150,7 +142,6 @@ configure_apache_mpm() {
   fi
   [ "$max_workers" -ge 1 ] 2>/dev/null || max_workers=1
 
-  # Gioi han rieng cua PHP-FPM de tiet kiem RAM, mac dinh 24
   fpm_children="${PHP_FPM_MAX_CHILDREN:-24}"
   case "$fpm_children" in
     *[!0-9]*|'')
@@ -177,7 +168,6 @@ configure_apache_mpm() {
   [ "$start_servers" -gt "$max_spare" ] && max_spare="$start_servers"
   [ "$min_spare" -gt "$start_servers" ] && min_spare="$start_servers"
 
-  # ThreadsPerChild=10: MaxRequestWorkers=40 = 4 process * 10 thread
   threads_per_child=10
   [ "$max_workers" -lt 10 ] && threads_per_child=1
   server_limit=$(( (max_workers + threads_per_child - 1) / threads_per_child ))

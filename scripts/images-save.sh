@@ -1,8 +1,4 @@
 #!/bin/sh
-# Xuất toàn bộ image của stack ra một tệp nén để nạp lại khi chạy offline.
-#
-# Usage: sh scripts/images-save.sh [output.tar.gz]
-# Default output: backup/images/moodle-images.tar.gz
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -16,7 +12,6 @@ command -v docker >/dev/null 2>&1 || {
     exit 1
 }
 
-# Lấy danh sách image từ compose để không bị lệch khi cấu hình dịch vụ đổi.
 IMAGES="$(docker compose config --images)"
 [ -n "$IMAGES" ] || {
     echo "Không đọc được danh sách image từ docker compose." >&2
@@ -40,7 +35,6 @@ if [ "$missing" -ne 0 ]; then
     exit 1
 fi
 
-# Nếu đích là .gz, ghi tar tạm rồi nén, để bắt được lỗi của docker save.
 TAR_OUT="$OUT"
 COMPRESS=0
 case "$OUT" in
