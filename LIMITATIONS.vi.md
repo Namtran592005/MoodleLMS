@@ -49,6 +49,8 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | `opcache.validate_timestamps=0` | Sửa file PHP không có tác dụng tới khi restart container | Trung bình |
 | `max_execution_time=300` so với `ProxyTimeout 900` | Tác vụ web có thể chết ở 300 giây dù proxy cho 900 giây | Thấp |
 | Không CDN, không object storage | Mọi lưu lượng và tệp đều dồn vào một ổ đĩa, một CPU | Trung bình |
+| Chỉ nén `gzip` | Không có brotli hay zstd cho HTML đi qua proxy, nên văn bản vẫn lớn hơn mức tốt nhất hiện có | Thấp |
+| Chỉ HTTP/1.1 trên cổng 80 | Không có multiplexing; lần tải đầu bị giới hạn sáu kết nối song song mỗi host | Thấp |
 | Không có search engine ngoài | Tìm kiếm toàn cục dùng DB, chậm dần khi dữ liệu lớn | Thấp |
 | Upload 200 MB, RAM PHP 1 GB | Hai người upload lớn cùng lúc có thể hết RAM | Thấp |
 

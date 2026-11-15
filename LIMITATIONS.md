@@ -50,6 +50,8 @@ is still open.
 | `opcache.validate_timestamps=0` | Edited PHP files are ignored until the container restarts | Medium |
 | `max_execution_time=300` vs `ProxyTimeout 900` | Web tasks can die at 300 s even though the proxy allows 900 s | Low |
 | No CDN or object storage | All traffic and files hit one disk and one CPU | Medium |
+| Only `gzip` compression | No brotli or zstd for proxied HTML, so text stays larger than the best available | Low |
+| HTTP/1.1 only on port 80 | No multiplexing; a first visit is limited to six parallel connections per host | Low |
 | No external search engine | Global search uses the database and slows with size | Low |
 | 200 MB upload, 1 GB PHP memory | Two large concurrent uploads can exhaust memory | Low |
 

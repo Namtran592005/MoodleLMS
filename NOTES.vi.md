@@ -124,6 +124,78 @@ cho mọi truy vấn vượt ngưỡng.
 Đặt trong khối `command:` của `db` rồi khởi động lại container. Buffer pool nên
 chứa được working set; cơ sở dữ liệu ở đây chỉ khoảng 44 MB nên 2 GB đã rất rộng.
 
+## Cache phía trình duyệt và nén
+
+Hai thiết lập quyết định việc trình duyệt có phải tải lại tài nguyên mỗi lần
+chuyển trang hay không. Bản thân máy chủ vốn nhanh: trang chủ trả lời trong 80
+đến 100 ms, trang đăng nhập 37 đến 51 ms. Cảm giác chậm khi chuyển trang đến từ
+phía trình duyệt.
+
+### Cache JavaScript
+
+`moodle/config.php` đặt:
+
+```php
+$CFG->cachejs = true;
+```
+
+Nên giữ thiết lập này trong `config.php` thay vì trong cơ sở dữ liệu. Moodle ép
+giá trị từ đó, và `admin/cli/cfg.php` từ chối thay đổi với thông báo
+`The configuration variable $CFG->cachejs is set in config.php, unable to change.`
+Trang quản trị cũng hiển thị thiết lập này ở trạng thái bị ép. Lợi ích là giá trị
+vẫn còn sau khi phục hồi cơ sở dữ liệu.
+
+Khi tắt cache, mọi URL tài nguyên chứa `-1` và header `Expires` chỉ hơn thời điểm
+hiện tại hai giây, nên mỗi lần chuyển trang phải kiểm tra lại khoảng 76 tệp
+JavaScript và ESM. Khi bật cache, URL mang revision của Moodle, tệp được gửi ở
+dạng đã thu gọn, và header là:
+
+| Tài nguyên | Header |
+|---|---|
+| `/lib/javascript.php/<rev>/...` | `Cache-Control: public, max-age=7776000, immutable` |
+| `/core/esm/<rev>/...` | `Cache-Control: public, max-age=31536000, immutable` |
+
+Sau khi đổi thiết lập, purge cache rồi khởi động lại container web:
+
+```bash
+docker compose exec -u www-data moodle php admin/cli/purge_caches.php
+docker compose restart moodle
+```
+
+Bắt buộc phải khởi động lại. OPcache chạy với `opcache.validate_timestamps=0` nên
+`config.php` vừa sửa bị bỏ qua cho tới khi PHP khởi động lại.
+
+Đo trên máy này bằng trình duyệt:
+
+| Chỉ số | Cache nguội | Cache ấm |
+|---|---|---|
+| DOMContentLoaded, trang chủ | 8,4 giây | 0,44 giây |
+| Tài nguyên lấy từ cache trình duyệt | 0 trên 68 | 46 trên 46 |
+| Dung lượng tài nguyên phải tải | khoảng 1,0 MB | 0 byte |
+| DOMContentLoaded, trang khóa học | không áp dụng | 0,37 giây |
+| DOMContentLoaded, trang đăng nhập | không áp dụng | 0,31 giây |
+
+Trước khi đổi, mọi lần chuyển trang đều giống cột cache nguội. Lần tải đầu sau
+khi purge vẫn nặng, vì Moodle gửi một gói `core/first.js` lớn; các lần sau lấy
+lại từ cache trình duyệt.
+
+### Nén phản hồi
+
+`Caddyfile` nén phản hồi từ proxy:
+
+```text
+encode gzip
+```
+
+Chọn `gzip` có chủ đích. Bản Caddy này nén được tệp tĩnh bằng `zstd`, nhưng không
+áp `zstd` cho HTML đi qua proxy, và với những tệp nó xử lý thì `zstd` lại cho kết
+quả lớn hơn `gzip` (588 so với 543 byte với `slick.css`, 5553 so với 4557 với
+`animate.css`). Với `gzip`, trang chủ giảm từ 93,5 KB xuống 14,3 KB, trang đăng
+nhập từ 45 KB xuống khoảng 10 KB.
+
+Apache đã nén CSS và JavaScript bằng `gzip`, nên Caddy chuyển tiếp nguyên trạng
+thay vì nén hai lần.
+
 ## Quy mô theo tải
 
 | Hạng mục | Khoảng 100 người dùng đồng thời | Khoảng 1000 người dùng đồng thời |

@@ -125,6 +125,77 @@ Set it in the `db` `command:` block and restart the container. The pool should
 hold the working set; the database here is only about 44 MB, so 2 GB is already
 generous.
 
+## Browser caching and compression
+
+Two settings decide how much work the browser repeats on every page change. The
+server itself is fast: the home page answers in 80 to 100 ms and login in 37 to
+51 ms. What made navigation feel sluggish was the client side.
+
+### JavaScript cache
+
+`moodle/config.php` sets:
+
+```php
+$CFG->cachejs = true;
+```
+
+Keep it in `config.php` rather than the database. Moodle forces the value from
+there, and `admin/cli/cfg.php` refuses to change it with
+`The configuration variable $CFG->cachejs is set in config.php, unable to change.`
+The site administration page shows the same setting as forced. The benefit is
+that the value survives a database restore.
+
+With the cache off, every asset URL contains `-1` and responses carry an
+`Expires` two seconds in the future, so each navigation revalidates about 76
+JavaScript and ESM files. With the cache on, URLs carry the Moodle revision,
+files are sent minified, and the headers are:
+
+| Asset | Header |
+|---|---|
+| `/lib/javascript.php/<rev>/...` | `Cache-Control: public, max-age=7776000, immutable` |
+| `/core/esm/<rev>/...` | `Cache-Control: public, max-age=31536000, immutable` |
+
+After changing the setting, purge caches and restart the web container:
+
+```bash
+docker compose exec -u www-data moodle php admin/cli/purge_caches.php
+docker compose restart moodle
+```
+
+The restart is required. OPcache runs with `opcache.validate_timestamps=0`, so an
+edited `config.php` is ignored until PHP starts again.
+
+Measured in a browser on this host:
+
+| Metric | Cold cache | Warm cache |
+|---|---|---|
+| DOMContentLoaded, home page | 8.4 s | 0.44 s |
+| Resources served from browser cache | 0 of 68 | 46 of 46 |
+| Asset transfer | about 1.0 MB | 0 bytes |
+| Course page DOMContentLoaded | n/a | 0.37 s |
+| Login page DOMContentLoaded | n/a | 0.31 s |
+
+Before the change every navigation behaved like the cold column. The first visit
+after a purge is still heavy, because Moodle sends one large `core/first.js`
+aggregate; later navigations reuse it from the browser cache.
+
+### Response compression
+
+`Caddyfile` compresses proxied responses:
+
+```text
+encode gzip
+```
+
+`gzip` is deliberate. This Caddy build does compress static files with `zstd`,
+but it does not apply `zstd` to proxied HTML, and on the files it does handle
+`zstd` produced larger output than `gzip` (588 versus 543 bytes for `slick.css`,
+5553 versus 4557 for `animate.css`). With `gzip` the home page drops from 93.5 KB
+to 14.3 KB and login from 45 KB to about 10 KB.
+
+Apache already compresses CSS and JavaScript with `gzip`, so Caddy passes those
+through instead of encoding them twice.
+
 ## Sizing by load
 
 | Item | Around 100 concurrent users | Around 1000 concurrent users |

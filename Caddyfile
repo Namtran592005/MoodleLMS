@@ -5,6 +5,8 @@
 	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
 	handle {
+		encode gzip
+
 		header {
 			Server "TVC-LMS-Cloud"
 			X-Content-Type-Options "nosniff"
