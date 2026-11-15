@@ -549,6 +549,11 @@ du -sh moodledata/* backup logs 2>/dev/null
   `config_log`, `upgrade_log` hay `tool_customlang`.
 - `scripts/log-rotate.sh` giữ log Apache, PHP, Caddy, MySQL và Redis trong 30
   ngày.
+- `scripts/log-clean.sh` dọn sạch mọi thư mục con trong `logs/` nhưng giữ nguyên
+  cây thư mục. Tệp có thể còn mở (không có ngày trong tên, ngày hôm nay, hoặc
+  được ghi trong 24 giờ qua) được truncate để tiến trình đang chạy tiếp tục ghi
+  đúng tệp; tệp đã xoay vòng thì xóa hẳn. Chạy `--dry-run` trước; script hỏi
+  `XOA` trước khi thay đổi.
 - `docker builder prune` thu hồi build cache; `docker system prune -a` xóa image
   không dùng và container đã dừng, không ảnh hưởng volume dữ liệu.
 - `moodledata/temp`, thư mục mã nguồn cũ và các bản dump cũ xóa được sau khi đã

@@ -560,6 +560,11 @@ du -sh moodledata/* backup logs 2>/dev/null
   touch `config_log`, `upgrade_log` or `tool_customlang`.
 - `scripts/log-rotate.sh` keeps 30 days of Apache, PHP, Caddy, MySQL and Redis
   logs.
+- `scripts/log-clean.sh` empties every subdirectory of `logs/` but keeps the
+  directory tree. Files that may still be open (no date in the name, today's
+  date, or modified in the last 24 hours) are truncated so the running service
+  keeps writing to the same file; rotated files are deleted. Run `--dry-run`
+  first; it asks for `XOA` before changing anything.
 - `docker builder prune` reclaims build cache; `docker system prune -a` removes
   unused images and stopped containers without touching data volumes.
 - `moodledata/temp`, old source directories and old dumps are safe to delete
