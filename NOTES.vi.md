@@ -267,18 +267,6 @@ MySQL; phải sao chép các phần đó và `backup/moodle_latest.sql` riêng. 
 đã cố định là `moodle-server-moodle:latest` và `moodle-caddy:latest` nên thư mục
 dự án có thể đặt tên bất kỳ.
 
-### Vá usermenu
-
-Sau khi cài hoặc nâng cấp:
-
-```bash
-bash scripts/patch-usermenu.sh
-docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
-```
-
-Script lưu bản gốc vào `backup/usermenu-patch/` và không ghi đè nếu mã nguồn đã
-thay đổi.
-
 ### Gói ngôn ngữ tùy chỉnh
 
 Mở thẳng `/admin/tool/customlang/import.php?lng=vi` để vào form nhập ZIP. Mục
@@ -599,7 +587,7 @@ Phân tích đầy đủ nằm trong [LIMITATIONS.vi.md](LIMITATIONS.vi.md). Tó
 - Redis giữ AOF trong `redis_data`; `down -v` vẫn xóa session.
 - Không monitoring, không alert; người dùng phát hiện lỗi trước.
 - Thẻ image động nên rebuild không tái lập được.
-- Nâng cấp thủ công và bản vá usermenu có thể làm hỏng.
+- Nâng cấp thủ công.
 
 Ba rủi ro lớn nhất có ghi chú trong
 [LIMITATIONS.vi.md](LIMITATIONS.vi.md#ba-rủi-ro-lớn-nhất). Restic và volume Redis

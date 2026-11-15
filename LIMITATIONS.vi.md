@@ -74,7 +74,6 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | Hạn chế | Ảnh hưởng | Mức |
 |---|---|---|
 | Nâng cấp thủ công | Downtime và sai sót con người ở mỗi bản phát hành | Cao |
-| Vá usermenu sửa core | Dễ vỡ hoặc bị ghi đè khi nâng cấp | Trung bình |
 | `.htaccess` có thể bị gói mới ghi đè | Schema bị tải xuống được cho tới khi khôi phục | Trung bình |
 | `config.php` không nằm trong repo | Máy mới phải dựng lại bằng tay | Trung bình |
 | `docs/` bị gitignore | Tri thức vận hành chỉ nằm trên một máy | Trung bình |

@@ -253,8 +253,8 @@ docker compose down
 docker compose up -d
 ```
 
-Các quy trình khác — chạy offline bằng image, vá usermenu, nhập gói ngôn ngữ tùy
-chỉnh, dọn dẹp — nằm trong [NOTES.vi.md](NOTES.vi.md).
+Các quy trình khác — chạy offline bằng image, nhập gói ngôn ngữ tùy chỉnh, dọn
+dẹp — nằm trong [NOTES.vi.md](NOTES.vi.md).
 
 ## TLS và tên miền
 

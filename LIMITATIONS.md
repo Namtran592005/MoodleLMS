@@ -75,7 +75,6 @@ is still open.
 | Limitation | Impact | Severity |
 |---|---|---|
 | Manual upgrades | Downtime and human error on every release | High |
-| usermenu patch edits core | Breaks or gets overwritten on upgrade | Medium |
 | `.htaccess` can be overwritten by a release | Schema files become downloadable until restored | Medium |
 | `config.php` not in the repo | A new machine needs manual reconstruction | Medium |
 | `docs/` is gitignored | Operational knowledge lives on one machine | Medium |

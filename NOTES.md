@@ -267,18 +267,6 @@ copy those and `backup/moodle_latest.sql` separately. Image names are fixed as
 `moodle-server-moodle:latest` and `moodle-caddy:latest`, so the directory can
 have any name.
 
-### usermenu patch
-
-After install or upgrade:
-
-```bash
-bash scripts/patch-usermenu.sh
-docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
-```
-
-The script stores originals in `backup/usermenu-patch/` and refuses to overwrite
-if the source has changed.
-
 ### Custom language pack
 
 Open `/admin/tool/customlang/import.php?lng=vi` directly to reach the ZIP form.
@@ -610,7 +598,7 @@ The full analysis is in [LIMITATIONS.md](LIMITATIONS.md). In short:
 - Redis keeps its AOF in `redis_data`; `down -v` still clears sessions.
 - No monitoring or alerting; users notice failures first.
 - Mutable image tags make rebuilds non-reproducible.
-- Upgrades are manual and the usermenu patch can break them.
+- Upgrades are manual.
 
 The three highest risks have notes in
 [LIMITATIONS.md](LIMITATIONS.md#the-three-highest-risks). Restic and the Redis

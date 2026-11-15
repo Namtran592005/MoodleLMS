@@ -260,8 +260,8 @@ docker compose down
 docker compose up -d
 ```
 
-Other procedures — offline install from images, usermenu patch, custom language
-packs, cleanup — are in [NOTES.md](NOTES.md).
+Other procedures — offline install from images, custom language packs, cleanup —
+are in [NOTES.md](NOTES.md).
 
 ## TLS and domain
 
