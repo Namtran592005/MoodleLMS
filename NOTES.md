@@ -308,10 +308,10 @@ Expected results after the change:
 
 ### Database dumps
 
-`scripts/db-job.sh` runs inside `moodle_db`; Ofelia calls it at `@daily`
-(00:00 UTC). Each run writes `backup/moodle_<time>.sql` with a second-precision
-name, refreshes `moodle_latest.sql` through a temporary file, then deletes dated
-dumps older than 7 days:
+`scripts/db-job.sh` runs inside `moodle_db`; Ofelia calls it at 07:00
+(`Asia/Ho_Chi_Minh`). Each run writes `backup/moodle_<time>.sql` with a
+second-precision name, refreshes `moodle_latest.sql` through a temporary file,
+then deletes dated dumps older than 7 days:
 
 ```sh
 find /backup -maxdepth 1 -type f -name 'moodle_*.sql' \
@@ -467,19 +467,19 @@ repository later, set `RESTIC_REPOSITORY` in `.env` to an `s3:`, `rclone:` or
 ### Ofelia schedule format
 
 Ofelia 0.3.x, the version behind the `latest` tag, still requires the seconds
-field first: `0 0 19 * * *` means 19:00:00 UTC, while `0 19 * * *` means every
-hour at minute 19. The five-field form looks valid and produces no error, so a
-daily job silently turns hourly.
+field first: `0 0 7 * * *` means 07:00:00, while `0 7 * * *` means every hour at
+minute 7. The five-field form looks valid and produces no error, so a daily job
+silently turns hourly.
 
 ```text
-0 0 17 * * *   log rotation  (00:00 VN)
-0 0 19 * * *   restic backup  (02:00 VN)
-@daily         mysql dump
-@every 1m      moodle cron
+0 0 7 * * *   database dump  (07:00)
+0 0 0 * * *   log rotation   (00:00)
+0 0 2 * * *   restic backup  (02:00)
+@every 1m     moodle cron
 ```
 
-All times are UTC because the scheduler container has no `TZ`. `@daily` fires at
-00:00 UTC, which is 07:00 in Vietnam.
+All times are `Asia/Ho_Chi_Minh` because every container receives `TZ` from
+`.env`. Change `TZ` and the schedules move with it.
 
 Check what was really registered in the log:
 
@@ -613,12 +613,11 @@ exceeded `post_max_size`.
 
 ### Wrong time zone
 
-Every container runs in UTC; no `TZ` variable is passed from `.env`. Moodle has
-its own time zone under **Site administration → Location → Location settings**,
-defaulting to `Asia/Ho_Chi_Minh`. Moodle pages and Moodle logs therefore show
-`+0700` while container logs, Apache and Ofelia stay in UTC. Set the Moodle value
-if you need another zone, but keep the Ofelia schedule offsets in mind: the jobs
-are written in UTC.
+`TZ` in `.env` defaults to `Asia/Ho_Chi_Minh` and compose passes it to every
+container, so Apache, PHP, MySQL, Redis, Caddy and Ofelia write timestamps in
+Vietnam time. Moodle has its own setting under **Site administration → Location
+→ Location settings**; keep it on the same zone. If you change `TZ`, update the
+Moodle setting too, or the UI and the logs will disagree.
 
 ## Known limitations
 

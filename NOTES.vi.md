@@ -306,9 +306,10 @@ Kết quả mong đợi sau khi thay:
 
 ### Bản dump cơ sở dữ liệu
 
-`scripts/db-job.sh` chạy trong `moodle_db`; Ofelia gọi lúc `@daily` (00:00 UTC).
-Mỗi lần chạy ghi `backup/moodle_<thời-gian>.sql` với tên tới giây, cập nhật
-`moodle_latest.sql` qua tệp tạm, rồi xóa các bản theo ngày cũ hơn 7 ngày:
+`scripts/db-job.sh` chạy trong `moodle_db`; Ofelia gọi lúc 07:00
+(`Asia/Ho_Chi_Minh`). Mỗi lần chạy ghi `backup/moodle_<thời-gian>.sql` với tên
+tới giây, cập nhật `moodle_latest.sql` qua tệp tạm, rồi xóa các bản theo ngày cũ
+hơn 7 ngày:
 
 ```sh
 find /backup -maxdepth 1 -type f -name 'moodle_*.sql' \
@@ -457,19 +458,19 @@ khác, đặt `RESTIC_REPOSITORY` trong `.env` thành đích `s3:`, `rclone:` ho
 ### Định dạng lịch của Ofelia
 
 Ofelia 0.3.x, bản đứng sau tag `latest`, vẫn bắt buộc trường giây ở đầu:
-`0 0 19 * * *` là 19:00:00 UTC, còn `0 19 * * *` là mỗi giờ vào phút 19. Dạng
-năm trường trông hợp lệ và không báo lỗi, nên một job hằng ngày âm thầm thành
-mỗi giờ một lần.
+`0 0 7 * * *` là 07:00:00, còn `0 7 * * *` là mỗi giờ vào phút 7. Dạng năm
+trường trông hợp lệ và không báo lỗi, nên một job hằng ngày âm thầm thành mỗi
+giờ một lần.
 
 ```text
-0 0 17 * * *   xoay log      (00:00 giờ VN)
-0 0 19 * * *   sao lưu tệp   (02:00 giờ VN)
-@daily         dump mysql
-@every 1m      cron moodle
+0 0 7 * * *   dump cơ sở dữ liệu  (07:00)
+0 0 0 * * *   xoay log            (00:00)
+0 0 2 * * *   sao lưu tệp         (02:00)
+@every 1m     cron moodle
 ```
 
-Mọi mốc đều theo UTC vì container lập lịch không có `TZ`. `@daily` chạy lúc
-00:00 UTC, tức 07:00 giờ Việt Nam.
+Mọi mốc theo `Asia/Ho_Chi_Minh` vì mọi container nhận `TZ` từ `.env`. Đổi `TZ`
+thì lịch cũng dịch theo.
 
 Kiểm tra lịch đã đăng ký thật:
 
@@ -602,11 +603,11 @@ policies**. Lỗi 413 từ Caddy hoặc thất bại im lặng thường là req
 
 ### Sai múi giờ
 
-Mọi container chạy UTC; không có biến `TZ` nào được truyền từ `.env`. Moodle có
-múi giờ riêng trong **Site administration → Location → Location settings**, mặc
-định `Asia/Ho_Chi_Minh`. Vì vậy trang và log của Moodle hiện `+0700` trong khi
-log container, Apache và Ofelia vẫn theo UTC. Đổi múi giờ Moodle nếu cần, nhưng
-nhớ lịch Ofelia viết theo UTC.
+`TZ` trong `.env` mặc định `Asia/Ho_Chi_Minh` và compose truyền cho mọi
+container, nên Apache, PHP, MySQL, Redis, Caddy và Ofelia ghi mốc thời gian theo
+giờ Việt Nam. Moodle có thiết lập riêng trong **Site administration → Location →
+Location settings**; giữ cùng múi giờ. Nếu đổi `TZ`, đổi cả thiết lập của Moodle,
+nếu không giao diện và log sẽ lệch nhau.
 
 ## Giới hạn đã biết
 

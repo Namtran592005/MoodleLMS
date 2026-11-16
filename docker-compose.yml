@@ -12,6 +12,8 @@ services:
     container_name: moodle_caddy
     restart: always
     logging: *default-logging
+    environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
       interval: 30s
@@ -74,8 +76,10 @@ services:
           --innodb-file-per-table=1 \
           --innodb-flush-log-at-trx-commit=2 \
           --sync-binlog=0 \
+          --log-timestamps=SYSTEM \
           $$LOGOPT
     environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MOODLE_DB_NAME}
       MYSQL_USER: ${MOODLE_DB_USER}
@@ -89,7 +93,7 @@ services:
       - moodle_net
     labels:
       - "ofelia.enabled=true"
-      - "ofelia.job-exec.db-backup.schedule=@daily"
+      - "ofelia.job-exec.db-backup.schedule=0 0 7 * * *"
       - "ofelia.job-exec.db-backup.command=nice -n 19 sh /scripts/db-job.sh"
 
   redis:
@@ -124,6 +128,7 @@ services:
           --maxmemory-policy allkeys-lru \
           $$LOGOPT
     environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - ./logs/redis:/var/log/redis
@@ -158,7 +163,10 @@ services:
       - ./logs/moodle:/var/log/moodle
       - ./logs:/logs
       - ./scripts/log-rotate.sh:/usr/local/bin/log-rotate.sh:ro
+      - ./php/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint.sh"]
     environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
       PUID: ${PUID:-}
       PGID: ${PGID:-}
       MOODLE_DB_HOST: db
@@ -183,9 +191,9 @@ services:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.moodle-cron.schedule=@every 1m"
       - "ofelia.job-exec.moodle-cron.command=setpriv --reuid www-data --regid www-data --init-groups php /var/www/html/admin/cli/cron.php --keep-alive=0"
-      - "ofelia.job-exec.logs-rotate.schedule=0 0 17 * * *"
+      - "ofelia.job-exec.logs-rotate.schedule=0 0 0 * * *"
       - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
-      - "ofelia.job-exec.restic-backup.schedule=0 0 19 * * *"
+      - "ofelia.job-exec.restic-backup.schedule=0 0 2 * * *"
       - "ofelia.job-exec.restic-backup.command=nice -n 19 sh /scripts/restic-job.sh"
 
   cron:
@@ -195,6 +203,8 @@ services:
     mem_limit: 256m
     memswap_limit: 256m
     logging: *default-logging
+    environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
     healthcheck:
       test: ["CMD-SHELL", "pidof ofelia >/dev/null"]
       interval: 30s

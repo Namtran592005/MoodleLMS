@@ -74,6 +74,7 @@ chmod 600 .env
 | `REDIS_PASSWORD` | Mật khẩu Redis |
 | `RESTIC_PASSWORD` | Mật khẩu mã hóa kho restic |
 | `RESTIC_REPOSITORY` | Tùy chọn, mặc định `/backup/restic` |
+| `TZ` | Múi giờ, mặc định `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
 | `PUID`, `PGID` | UID/GID cho `www-data`, mặc định `1000` |
 | `APACHE_MAX_REQUEST_WORKERS`, `APACHE_START_SERVERS` | Số thread và process Apache, để trống thì tự tính |
@@ -190,8 +191,8 @@ bash scripts/db-clean.sh --dry-run   # liệt kê tệp và tổng dung lượng
 bash scripts/db-clean.sh             # xóa, hỏi gõ XOA
 ```
 
-Ofelia chạy dump lúc 00:00 UTC (07:00 giờ Việt Nam) và job restic lúc 19:00 UTC
-(02:00 giờ Việt Nam), nên tệp được sao lưu sau cơ sở dữ liệu. Kho restic nằm trong
+Ofelia chạy dump lúc 07:00 và job restic lúc 02:00, cùng theo múi giờ
+`Asia/Ho_Chi_Minh`, nên bản sao tệp đi sau bản dump gần nhất. Kho restic nằm trong
 `backup/restic`, được mã hóa bằng `RESTIC_PASSWORD`, và chỉ lưu phần thay đổi so
 với lần trước: chạy lại khi dữ liệu không đổi chỉ thêm vài trăm byte thay vì một
 bản đầy đủ. Sau mỗi lần backup thành công, script giữ 7 bản ngày gần nhất rồi dọn
@@ -227,7 +228,8 @@ in ra sẽ làm gì. Cả hai chế độ xóa đều hỏi gõ `XOA` để xác
 
 Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản triển khai, với
 `--keep-alive=0`, nên mỗi lần chạy kết thúc ngay sau khi xử lý task. Service
-`cron` giới hạn 256 MB và tự khởi động lại nếu vượt giới hạn.
+`cron` giới hạn 256 MB và tự khởi động lại nếu vượt giới hạn. Mọi job dùng múi
+giờ `TZ` trong `.env`, mặc định `Asia/Ho_Chi_Minh`.
 
 ### Log
 

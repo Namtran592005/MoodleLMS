@@ -77,6 +77,7 @@ chmod 600 .env
 | `REDIS_PASSWORD` | Redis password |
 | `RESTIC_PASSWORD` | Passphrase that encrypts the restic repository |
 | `RESTIC_REPOSITORY` | Optional, defaults to `/backup/restic` |
+| `TZ` | Time zone, defaults to `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
 | `PUID`, `PGID` | UID/GID for `www-data`, defaults to `1000` |
 | `APACHE_MAX_REQUEST_WORKERS`, `APACHE_START_SERVERS` | Apache thread and process counts, computed automatically when empty |
@@ -193,8 +194,8 @@ bash scripts/db-clean.sh --dry-run   # list the files and their total size
 bash scripts/db-clean.sh             # delete them, confirmation XOA
 ```
 
-Ofelia runs the dump at 00:00 UTC (07:00 in Vietnam) and the restic job at
-19:00 UTC (02:00 in Vietnam), so files are copied after the database.
+Ofelia runs the dump at 07:00 and the restic job at 02:00, both in
+`Asia/Ho_Chi_Minh`, so the file snapshot follows the most recent database dump.
 The restic repository lives in `backup/restic`, is encrypted with
 `RESTIC_PASSWORD`, and stores only what changed since the previous snapshot, so
 a second run of unchanged data adds a few hundred bytes instead of a full copy.
@@ -234,7 +235,7 @@ destructive modes ask you to type `XOA` to confirm.
 Ofelia runs `admin/cli/cron.php` every minute as the deployment account's UID,
 with `--keep-alive=0`, so each run exits as soon as it finishes its tasks. The
 `cron` service is limited to 256 MB and restarts automatically if it exceeds
-that.
+that. Every job uses the `TZ` value from `.env`, `Asia/Ho_Chi_Minh` by default.
 
 ### Logs
 

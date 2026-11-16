@@ -80,7 +80,6 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | Không monitoring, không alert | Người dùng phát hiện lỗi trước đội vận hành | Cao |
 | Một scheduler cron duy nhất | Ofelia dừng là không task nào chạy và không ai biết | Trung bình |
 | Chưa cấu hình SMTP | Đặt lại mật khẩu và thông báo không gửi được | Trung bình |
-| Container chạy UTC | Trang Moodle hiện `+0700` còn log container, Apache và Ofelia theo UTC; khi đối chiếu mốc thời gian phải nhớ độ lệch này | Thấp |
 
 ## Mở rộng
 
@@ -116,7 +115,7 @@ ghi lại khoảng 50 MB dữ liệu không đổi.
 ```text
 php/Dockerfile        apt install restic
 docker-compose.yml    mount ./scripts:/scripts:ro, truyen RESTIC_PASSWORD
-                      va RESTIC_REPOSITORY, them job Ofelia luc 19:00 UTC
+                      va RESTIC_REPOSITORY, them job Ofelia luc 02:00
 scripts/restic-job.sh     job that su: khoi tao kho, backup moodledata, loai tru rac
 scripts/restic-backup.sh  wrapper tren host de chay tay
 scripts/restic-restore.sh phuc hoi ra thu muc tam hoac --in-place

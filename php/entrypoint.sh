@@ -302,6 +302,14 @@ start_services() {
   exit "$status"
 }
 
+configure_timezone() {
+  [ -n "${TZ:-}" ] || return 0
+  conf=/usr/local/etc/php/conf.d/zz-timezone.ini
+  printf '[Date]\ndate.timezone = %s\n' "$TZ" > "$conf"
+  chmod 644 "$conf"
+}
+
 configure_apache_mpm
 configure_php_fpm
+configure_timezone
 start_services
