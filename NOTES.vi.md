@@ -500,6 +500,26 @@ Nếu bị OOM kill, giảm `PHP_FPM_MAX_CHILDREN` trong `.env` rồi chạy
 phải hết worker. Xem log Apache và PHP, và chạy các tác vụ dài bằng CLI thay vì
 trên trình duyệt.
 
+### Container báo unhealthy
+
+`docker compose ps` hiện `(unhealthy)` khi healthcheck lỗi. Healthcheck của
+`moodle` gọi `/` và dự phòng `/install.php`, có `start_period` 120 giây và 5 lần
+thử, nên một lần khởi động lại hoặc bảo trì ngắn không làm nó chuyển sang lỗi.
+Caddy chỉ khởi động khi `moodle` báo khỏe.
+
+Chạy thử tay khi vẫn unhealthy:
+
+```bash
+docker exec moodle_web curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1/
+docker inspect -f '{{json .State.Health}}' moodle_web
+docker logs --tail 50 moodle_web
+```
+
+Bản cũ dùng `/login/index.php`. Trang này trả lỗi khi Moodle đang bảo trì hoặc
+đang ở màn hình nâng cấp sau khi cập nhật phiên bản, nên container bị đánh dấu
+unhealthy trong lúc nâng cấp. Chờ nâng cấp xong thay vì ép khởi động lại giữa
+chừng.
+
 ### Tệp thuộc root
 
 Triệu chứng: Moodle báo không ghi được cache, hoặc tệp mới trong `moodle/` thuộc

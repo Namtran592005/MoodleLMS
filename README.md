@@ -4,7 +4,8 @@
 
 A Moodle 5.x deployment skeleton built with Docker Compose: reverse proxy,
 automatic TLS, production PHP, MySQL, Redis, cron and backups. The goal is to
-stand up an LMS on a Linux server with a single start command.
+stand up an LMS on a Linux server with a single start command. The current source
+is Moodle 5.3.1 (build 20261112).
 
 The repository holds only the configuration skeleton. Moodle source,
 `moodledata/`, `backup/`, `logs/`, `.env` and internal documentation stay out of

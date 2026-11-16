@@ -4,7 +4,8 @@
 
 Khung triển khai Moodle 5.x bằng Docker Compose: reverse proxy, TLS tự động, PHP
 production, MySQL, Redis, cron và backup. Mục tiêu là dựng hệ thống LMS trên máy
-chủ Linux bằng một lệnh khởi động.
+chủ Linux bằng một lệnh khởi động. Mã nguồn hiện tại là Moodle 5.3.1 (build
+20261112).
 
 Kho chỉ chứa khung cấu hình. Mã nguồn Moodle, `moodledata/`, `backup/`, `logs/`,
 `.env` và tài liệu nội bộ không đưa vào kho (xem `.gitignore`). Riêng

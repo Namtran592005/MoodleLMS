@@ -142,7 +142,7 @@ services:
     restart: always
     logging: *default-logging
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1/login/index.php"]
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1/ || curl -fsS -o /dev/null http://127.0.0.1/install.php"]
       interval: 30s
       timeout: 10s
       retries: 5

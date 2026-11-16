@@ -510,6 +510,26 @@ If it was an OOM kill, lower `PHP_FPM_MAX_CHILDREN` in `.env` and run
 workers are exhausted. Check the Apache and PHP logs, and run long tasks from
 CLI instead of the browser.
 
+### Container reports unhealthy
+
+`docker compose ps` shows `(unhealthy)` when the healthcheck fails. The `moodle`
+check requests `/` and falls back to `/install.php`, with a 120-second start
+period and 5 retries, so a normal restart or a short maintenance window does not
+mark it failed. Caddy starts only after `moodle` is healthy.
+
+Run the check by hand when it stays unhealthy:
+
+```bash
+docker exec moodle_web curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1/
+docker inspect -f '{{json .State.Health}}' moodle_web
+docker logs --tail 50 moodle_web
+```
+
+The earlier check used `/login/index.php`. That page returns an error while
+Moodle is in maintenance mode or serving the upgrade screen after a version
+update, so the container was marked unhealthy during upgrades. Wait for the
+upgrade to finish instead of restarting mid-way.
+
 ### Files owned by root
 
 Symptom: permission denied when Moodle writes cache, or new files under
