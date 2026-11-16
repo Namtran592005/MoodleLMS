@@ -194,8 +194,8 @@ bash scripts/db-clean.sh --dry-run   # list the files and their total size
 bash scripts/db-clean.sh             # delete them, confirmation XOA
 ```
 
-Ofelia runs the dump at 07:00 and the restic job at 02:00, both in
-`Asia/Ho_Chi_Minh`, so the file snapshot follows the most recent database dump.
+Ofelia runs the database dump and the restic job at 00:00 in
+`Asia/Ho_Chi_Minh`, so the dump and the file snapshot describe the same moment.
 The restic repository lives in `backup/restic`, is encrypted with
 `RESTIC_PASSWORD`, and stores only what changed since the previous snapshot, so
 a second run of unchanged data adds a few hundred bytes instead of a full copy.

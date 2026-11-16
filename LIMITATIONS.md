@@ -33,7 +33,7 @@ is still open.
 | Limitation | Impact | Severity |
 |---|---|---|
 | Database dump once a day | Up to 24 hours of data lost; RPO about 24 h | High |
-| File backup is 19 hours behind the dump | A file uploaded after the dump is orphaned on restore, not lost | Low |
+| File backup and database dump run together | A file uploaded during the backup window is orphaned on restore, not lost | Low |
 | Backup stored on the same disk | Disk failure or ransomware loses every copy | High |
 | No binlog | No point-in-time recovery; only the last dump | High |
 | Restore never rehearsed | Real RTO unknown; likely 30 to 60 minutes | Medium |
@@ -117,7 +117,7 @@ written about 50 MB of unchanged data each time.
 ```text
 php/Dockerfile        apt install restic
 docker-compose.yml    mount ./scripts:/scripts:ro, pass RESTIC_PASSWORD
-                      and RESTIC_REPOSITORY, add an Ofelia job at 02:00
+                      and RESTIC_REPOSITORY, add an Ofelia job at 00:00
 scripts/restic-job.sh job itself: init the repo, back up moodledata, exclude junk
 scripts/restic-backup.sh  host wrapper for manual runs
 scripts/restic-restore.sh restore to a staging dir or --in-place

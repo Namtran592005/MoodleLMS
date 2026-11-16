@@ -308,7 +308,7 @@ Expected results after the change:
 
 ### Database dumps
 
-`scripts/db-job.sh` runs inside `moodle_db`; Ofelia calls it at 07:00
+`scripts/db-job.sh` runs inside `moodle_db`; Ofelia calls it at 00:00
 (`Asia/Ho_Chi_Minh`). Each run writes `backup/moodle_<time>.sql` with a
 second-precision name, refreshes `moodle_latest.sql` through a temporary file,
 then deletes dated dumps older than 7 days:
@@ -467,19 +467,20 @@ repository later, set `RESTIC_REPOSITORY` in `.env` to an `s3:`, `rclone:` or
 ### Ofelia schedule format
 
 Ofelia 0.3.x, the version behind the `latest` tag, still requires the seconds
-field first: `0 0 7 * * *` means 07:00:00, while `0 7 * * *` means every hour at
-minute 7. The five-field form looks valid and produces no error, so a daily job
+field first: `0 0 3 * * *` means 03:00:00, while `0 3 * * *` means every hour at
+minute 3. The five-field form looks valid and produces no error, so a daily job
 silently turns hourly.
 
 ```text
-0 0 7 * * *   database dump  (07:00)
+0 0 0 * * *   database dump  (00:00)
 0 0 0 * * *   log rotation   (00:00)
-0 0 2 * * *   restic backup  (02:00)
+0 0 0 * * *   restic backup  (00:00)
 @every 1m     moodle cron
 ```
 
 All times are `Asia/Ho_Chi_Minh` because every container receives `TZ` from
-`.env`. Change `TZ` and the schedules move with it.
+`.env`. Change `TZ` and the schedules move with it. The three daily jobs share
+the 00:00 slot, so the dump and the file snapshot describe the same moment.
 
 Check what was really registered in the log:
 

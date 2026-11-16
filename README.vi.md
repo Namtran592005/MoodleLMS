@@ -191,8 +191,9 @@ bash scripts/db-clean.sh --dry-run   # liệt kê tệp và tổng dung lượng
 bash scripts/db-clean.sh             # xóa, hỏi gõ XOA
 ```
 
-Ofelia chạy dump lúc 07:00 và job restic lúc 02:00, cùng theo múi giờ
-`Asia/Ho_Chi_Minh`, nên bản sao tệp đi sau bản dump gần nhất. Kho restic nằm trong
+Ofelia chạy dump và job restic cùng lúc 00:00 theo múi giờ
+`Asia/Ho_Chi_Minh`, nên bản dump và bản sao tệp ứng với cùng một thời điểm. Kho
+restic nằm trong
 `backup/restic`, được mã hóa bằng `RESTIC_PASSWORD`, và chỉ lưu phần thay đổi so
 với lần trước: chạy lại khi dữ liệu không đổi chỉ thêm vài trăm byte thay vì một
 bản đầy đủ. Sau mỗi lần backup thành công, script giữ 7 bản ngày gần nhất rồi dọn

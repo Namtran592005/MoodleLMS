@@ -306,7 +306,7 @@ Kết quả mong đợi sau khi thay:
 
 ### Bản dump cơ sở dữ liệu
 
-`scripts/db-job.sh` chạy trong `moodle_db`; Ofelia gọi lúc 07:00
+`scripts/db-job.sh` chạy trong `moodle_db`; Ofelia gọi lúc 00:00
 (`Asia/Ho_Chi_Minh`). Mỗi lần chạy ghi `backup/moodle_<thời-gian>.sql` với tên
 tới giây, cập nhật `moodle_latest.sql` qua tệp tạm, rồi xóa các bản theo ngày cũ
 hơn 7 ngày:
@@ -458,19 +458,20 @@ khác, đặt `RESTIC_REPOSITORY` trong `.env` thành đích `s3:`, `rclone:` ho
 ### Định dạng lịch của Ofelia
 
 Ofelia 0.3.x, bản đứng sau tag `latest`, vẫn bắt buộc trường giây ở đầu:
-`0 0 7 * * *` là 07:00:00, còn `0 7 * * *` là mỗi giờ vào phút 7. Dạng năm
+`0 0 3 * * *` là 03:00:00, còn `0 3 * * *` là mỗi giờ vào phút 3. Dạng năm
 trường trông hợp lệ và không báo lỗi, nên một job hằng ngày âm thầm thành mỗi
 giờ một lần.
 
 ```text
-0 0 7 * * *   dump cơ sở dữ liệu  (07:00)
+0 0 0 * * *   dump cơ sở dữ liệu  (00:00)
 0 0 0 * * *   xoay log            (00:00)
-0 0 2 * * *   sao lưu tệp         (02:00)
+0 0 0 * * *   sao lưu tệp         (00:00)
 @every 1m     cron moodle
 ```
 
 Mọi mốc theo `Asia/Ho_Chi_Minh` vì mọi container nhận `TZ` từ `.env`. Đổi `TZ`
-thì lịch cũng dịch theo.
+thì lịch cũng dịch theo. Ba job hằng ngày dùng chung mốc 00:00, nên bản dump và
+bản sao tệp ứng với cùng một thời điểm.
 
 Kiểm tra lịch đã đăng ký thật:
 

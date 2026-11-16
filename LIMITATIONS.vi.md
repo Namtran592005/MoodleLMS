@@ -32,7 +32,7 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | Hạn chế | Ảnh hưởng | Mức |
 |---|---|---|
 | Dump cơ sở dữ liệu mỗi ngày một lần | Mất tới 24 giờ dữ liệu; RPO khoảng 24 giờ | Cao |
-| Backup tệp chậm hơn dump 19 giờ | Tệp tải lên sau lần dump thành mồ côi khi phục hồi, không mất | Thấp |
+| Backup tệp và dump chạy cùng lúc | Tệp tải lên trong lúc backup thành mồ côi khi phục hồi, không mất | Thấp |
 | Backup lưu cùng ổ đĩa | Hỏng đĩa hoặc ransomware là mất toàn bộ bản sao | Cao |
 | Không bật binlog | Không phục hồi theo thời điểm, chỉ có bản dump cuối | Cao |
 | Chưa từng diễn tập phục hồi | RTO thực tế chưa biết, ước tính 30 đến 60 phút | Trung bình |
@@ -115,7 +115,7 @@ ghi lại khoảng 50 MB dữ liệu không đổi.
 ```text
 php/Dockerfile        apt install restic
 docker-compose.yml    mount ./scripts:/scripts:ro, truyen RESTIC_PASSWORD
-                      va RESTIC_REPOSITORY, them job Ofelia luc 02:00
+                      va RESTIC_REPOSITORY, them job Ofelia luc 00:00
 scripts/restic-job.sh     job that su: khoi tao kho, backup moodledata, loai tru rac
 scripts/restic-backup.sh  wrapper tren host de chay tay
 scripts/restic-restore.sh phuc hoi ra thu muc tam hoac --in-place
