@@ -80,7 +80,7 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | Không monitoring, không alert | Người dùng phát hiện lỗi trước đội vận hành | Cao |
 | Một scheduler cron duy nhất | Ofelia dừng là không task nào chạy và không ai biết | Trung bình |
 | Chưa cấu hình SMTP | Đặt lại mật khẩu và thông báo không gửi được | Trung bình |
-| Múi giờ đặt ở hai nơi | Cron và log lệch khi hai nơi khác nhau | Thấp |
+| Container chạy UTC | Trang Moodle hiện `+0700` còn log container, Apache và Ofelia theo UTC; khi đối chiếu mốc thời gian phải nhớ độ lệch này | Thấp |
 
 ## Mở rộng
 

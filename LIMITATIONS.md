@@ -81,7 +81,7 @@ is still open.
 | No monitoring or alerting | Failures are found by users, not by the team | High |
 | Single cron scheduler | If Ofelia stops, no task runs and nothing reports it | Medium |
 | No SMTP configured | Password resets and notifications do not send | Medium |
-| Time zone set in two places | Cron and logs drift when they disagree | Low |
+| Containers run in UTC | Moodle pages show `+0700` while container, Apache and Ofelia logs stay UTC; compare timestamps with that offset in mind | Low |
 
 ## Scaling
 

@@ -478,6 +478,9 @@ daily job silently turns hourly.
 @every 1m      moodle cron
 ```
 
+All times are UTC because the scheduler container has no `TZ`. `@daily` fires at
+00:00 UTC, which is 07:00 in Vietnam.
+
 Check what was really registered in the log:
 
 ```bash
@@ -590,9 +593,12 @@ exceeded `post_max_size`.
 
 ### Wrong time zone
 
-The container uses `TZ` from `.env`. Moodle has its own default under **Site
-administration → Location → Location settings**. Both must match, otherwise
-cron schedules and log timestamps drift.
+Every container runs in UTC; no `TZ` variable is passed from `.env`. Moodle has
+its own time zone under **Site administration → Location → Location settings**,
+defaulting to `Asia/Ho_Chi_Minh`. Moodle pages and Moodle logs therefore show
+`+0700` while container logs, Apache and Ofelia stay in UTC. Set the Moodle value
+if you need another zone, but keep the Ofelia schedule offsets in mind: the jobs
+are written in UTC.
 
 ## Known limitations
 
@@ -627,4 +633,5 @@ Monthly:
 - Run `restic check --read-data-subset=5%` and test a file restore.
 - Check free disk and `docker system df`.
 - Review `logs/php` and `logs/moodle` for repeated errors.
+- Run `bash scripts/log-clean.sh --dry-run`, then clean up if `logs/` is large.
 - Confirm the OS security updates were applied.

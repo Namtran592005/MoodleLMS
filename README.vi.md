@@ -73,7 +73,6 @@ chmod 600 .env
 | `REDIS_PASSWORD` | Mật khẩu Redis |
 | `RESTIC_PASSWORD` | Mật khẩu mã hóa kho restic |
 | `RESTIC_REPOSITORY` | Tùy chọn, mặc định `/backup/restic` |
-| `TZ` | Múi giờ, mặc định `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
 | `PUID`, `PGID` | UID/GID cho `www-data`, mặc định `1000` |
 | `APACHE_MAX_REQUEST_WORKERS`, `APACHE_START_SERVERS` | Số thread và process Apache, để trống thì tự tính |
@@ -154,7 +153,7 @@ hoặc UID nhỏ hơn 1000 được thay bằng 1000.
 |---|---|---|
 | `moodle/`, `moodledata/` | tài khoản triển khai | Đọc, ghi, xóa |
 | `logs/caddy`, `logs/moodle`, `logs/php` | tài khoản triển khai | Đọc, ghi, xóa |
-| `logs/mysql`, `logs/redis` | user dịch vụ, group tài khoản triển khai | Đọc, xóa |
+| `logs/mysql`, `logs/redis` | user dịch vụ, group tài khoản triển khai | Đọc, ghi, xóa |
 | `backup/` | tài khoản triển khai | Đọc, ghi, xóa |
 
 Thư mục `755`, tệp `644`. Khi cần ép UID/GID khác, điền `PUID` và `PGID` trong
@@ -233,15 +232,17 @@ Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản tri
 
 | Dịch vụ | Đường dẫn | Định dạng |
 |---|---|---|
-| Caddy | `logs/caddy/access.log` | JSON, xoay 100 MB, giữ 30 tệp |
+| Caddy | `logs/caddy/access.log` | JSON, xoay 100 MB, giữ 30 tệp trong 30 ngày |
 | Apache | `logs/moodle/access-YYYY-MM-DD.log` | Tách theo ngày |
-| PHP | `logs/php/error-YYYY-MM-DD.log` | Tách theo ngày |
+| PHP | `logs/php/error.log` | Lỗi; bản xoay vòng tách theo ngày |
 | MySQL | `logs/mysql/error.log` | Chỉ log lỗi |
 | Redis | `logs/redis/redis.log` | Mức notice |
 
-`scripts/log-rotate.sh` chạy hằng ngày và giữ 30 ngày. Log của Docker engine
-giới hạn 10 MB mỗi tệp, tối đa 3 tệp cho mỗi container. Thời hạn giữ log trong
-Moodle và cách dọn dẹp có trong [NOTES.vi.md](NOTES.vi.md#đĩa-và-log).
+`scripts/log-rotate.sh` chạy hằng ngày và giữ 30 ngày. `scripts/log-clean.sh`
+dọn sạch mọi tệp log khi cần, giữ nguyên cây thư mục và truncate tệp còn đang mở
+thay vì xóa. Log của Docker engine giới hạn 10 MB mỗi tệp, tối đa 3 tệp cho mỗi
+container. Thời hạn giữ log trong Moodle và cách dọn dẹp có trong
+[NOTES.vi.md](NOTES.vi.md#đĩa-và-log).
 
 ### Lệnh thường dùng
 
@@ -275,10 +276,11 @@ cơ sở dữ liệu và xóa cache.
 - `.env` có quyền `600`; ba mật khẩu MySQL root, MySQL ứng dụng và Redis phải
   khác nhau.
 - `config.php` đọc mật khẩu cơ sở dữ liệu từ `MOODLE_DB_PASSWORD`.
-- Caddy gửi `Strict-Transport-Security`, `Content-Security-Policy`,
-  `X-Content-Type-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy` và
-  `Permissions-Policy`, đồng thời ẩn header `Server`. Apache bật `ServerTokens
-  Prod` và `ServerSignature Off`.
+- Caddy gửi `Strict-Transport-Security` khi dùng HTTPS, đặt `Server: LMS-System`
+  và thêm `Content-Security-Policy`, `X-Content-Type-Options`,
+  `Referrer-Policy`, `Cross-Origin-Opener-Policy`, `Permissions-Policy`. Chính
+  sách CSP chỉ cho `'self'` cộng các nguồn YouTube mà Moodle dùng. Apache bật
+  `ServerTokens Prod` và `ServerSignature Off`.
 - Caddy giới hạn 30 yêu cầu `POST` mỗi phút cho mỗi IP trên `/login/index.php` và
   `/login/token.php`, bổ sung cho chính sách khóa tài khoản của Moodle.
 - `moodle/public/.htaccess` giữ schema và thư mục phát triển ngoài webroot.

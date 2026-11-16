@@ -76,7 +76,6 @@ chmod 600 .env
 | `REDIS_PASSWORD` | Redis password |
 | `RESTIC_PASSWORD` | Passphrase that encrypts the restic repository |
 | `RESTIC_REPOSITORY` | Optional, defaults to `/backup/restic` |
-| `TZ` | Time zone, defaults to `Asia/Ho_Chi_Minh` |
 | `APP_ENV` | `production` |
 | `PUID`, `PGID` | UID/GID for `www-data`, defaults to `1000` |
 | `APACHE_MAX_REQUEST_WORKERS`, `APACHE_START_SERVERS` | Apache thread and process counts, computed automatically when empty |
@@ -157,7 +156,7 @@ No `chmod 777`. The entrypoint aligns the UID of the deployment account with
 |---|---|---|
 | `moodle/`, `moodledata/` | deployment account | Read, write, delete |
 | `logs/caddy`, `logs/moodle`, `logs/php` | deployment account | Read, write, delete |
-| `logs/mysql`, `logs/redis` | service user, deployment account group | Read, delete |
+| `logs/mysql`, `logs/redis` | service user, deployment account group | Read, write, delete |
 | `backup/` | deployment account | Read, write, delete |
 
 Directories are mode `755` and files `644`. To force a different UID/GID, set
@@ -240,15 +239,17 @@ that.
 
 | Service | Path | Format |
 |---|---|---|
-| Caddy | `logs/caddy/access.log` | JSON, 100 MB rotation, 30 files |
+| Caddy | `logs/caddy/access.log` | JSON, 100 MB rotation, 30 files, 30 days |
 | Apache | `logs/moodle/access-YYYY-MM-DD.log` | Split by day |
-| PHP | `logs/php/error-YYYY-MM-DD.log` | Split by day |
+| PHP | `logs/php/error.log` | Errors; rotated copies by day |
 | MySQL | `logs/mysql/error.log` | Errors only |
 | Redis | `logs/redis/redis.log` | Notice level |
 
-`scripts/log-rotate.sh` runs daily and keeps 30 days. Docker engine logs are
-capped at 10 MB per file, 3 files per container. Log retention inside Moodle and
-cleanup steps are covered in [NOTES.md](NOTES.md#disk-and-logs).
+`scripts/log-rotate.sh` runs daily and keeps 30 days. `scripts/log-clean.sh`
+empties every log file on demand while keeping the directory tree, and truncates
+files that are still open instead of deleting them. Docker engine logs are capped
+at 10 MB per file, 3 files per container. Log retention inside Moodle and cleanup
+steps are covered in [NOTES.md](NOTES.md#disk-and-logs).
 
 ### Common commands
 
@@ -282,9 +283,10 @@ proxy, replace URLs in the database and purge caches.
 - `.env` is mode `600`; the MySQL root, MySQL application and Redis passwords
   must differ.
 - `config.php` reads the database password from `MOODLE_DB_PASSWORD`.
-- Caddy sends `Strict-Transport-Security`, `Content-Security-Policy`,
-  `X-Content-Type-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy` and
-  `Permissions-Policy`, and hides the `Server` header. Apache uses
+- Caddy sends `Strict-Transport-Security` on HTTPS, sets `Server: LMS-System`,
+  and adds `Content-Security-Policy`, `X-Content-Type-Options`,
+  `Referrer-Policy`, `Cross-Origin-Opener-Policy` and `Permissions-Policy`. The
+  policy allows only `'self'` plus the YouTube sources Moodle uses. Apache sets
   `ServerTokens Prod` and `ServerSignature Off`.
 - Caddy allows 30 `POST` requests per minute per IP on `/login/index.php` and
   `/login/token.php`, complementing Moodle's account lockout.

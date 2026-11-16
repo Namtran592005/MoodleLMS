@@ -468,6 +468,9 @@ mỗi giờ một lần.
 @every 1m      cron moodle
 ```
 
+Mọi mốc đều theo UTC vì container lập lịch không có `TZ`. `@daily` chạy lúc
+00:00 UTC, tức 07:00 giờ Việt Nam.
+
 Kiểm tra lịch đã đăng ký thật:
 
 ```bash
@@ -579,9 +582,11 @@ policies**. Lỗi 413 từ Caddy hoặc thất bại im lặng thường là req
 
 ### Sai múi giờ
 
-Container dùng `TZ` trong `.env`. Moodle có mặc định riêng trong **Site
-administration → Location → Location settings**. Hai nơi phải trùng nhau, nếu
-không lịch cron và mốc thời gian trong log sẽ lệch.
+Mọi container chạy UTC; không có biến `TZ` nào được truyền từ `.env`. Moodle có
+múi giờ riêng trong **Site administration → Location → Location settings**, mặc
+định `Asia/Ho_Chi_Minh`. Vì vậy trang và log của Moodle hiện `+0700` trong khi
+log container, Apache và Ofelia vẫn theo UTC. Đổi múi giờ Moodle nếu cần, nhưng
+nhớ lịch Ofelia viết theo UTC.
 
 ## Giới hạn đã biết
 
@@ -616,4 +621,5 @@ Hằng tháng:
 - Chạy `restic check --read-data-subset=5%` và thử phục hồi một tệp.
 - Kiểm tra dung lượng trống và `docker system df`.
 - Xem `logs/php` và `logs/moodle` có lỗi lặp lại không.
+- Chạy `bash scripts/log-clean.sh --dry-run`, dọn nếu `logs/` đã lớn.
 - Xác nhận hệ điều hành đã cập nhật bảo mật.
