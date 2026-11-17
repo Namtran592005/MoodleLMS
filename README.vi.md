@@ -72,9 +72,12 @@ chmod 600 .env
 | Biến | Ý nghĩa |
 |---|---|
 | `MYSQL_ROOT_PASSWORD` | Mật khẩu root MySQL, chỉ dùng nội bộ |
+| `MOODLE_DB_HOST` | Tên máy chủ cơ sở dữ liệu, mặc định `db` |
 | `MOODLE_DB_NAME` | Tên cơ sở dữ liệu |
 | `MOODLE_DB_USER` | Tài khoản MySQL dành cho Moodle |
 | `MOODLE_DB_PASSWORD` | Mật khẩu của tài khoản trên |
+| `MOODLE_WWWROOT` | Địa chỉ công khai của Moodle, mặc định `http://localhost` |
+| `MOODLE_SSLPROXY` | `true` khi Caddy kết thúc TLS, mặc định `false` |
 | `REDIS_PASSWORD` | Mật khẩu Redis |
 | `RESTIC_PASSWORD` | Mật khẩu mã hóa kho restic |
 | `RESTIC_REPOSITORY` | Tùy chọn, mặc định `/backup/restic` |
@@ -101,13 +104,21 @@ tar -xzf moodle-5.x.tgz -C moodle --strip-components=1
 
 ```php
 $CFG->dbtype    = 'mysqli';
-$CFG->dbhost    = 'db';
-$CFG->dbname    = 'moodle';
-$CFG->dbuser    = 'moodle_user';
-$CFG->dbpass    = getenv('MOODLE_DB_PASSWORD');
-$CFG->wwwroot   = 'http://localhost';
+$CFG->dbhost    = getenv('MOODLE_DB_HOST') ?: 'db';
+$CFG->dbname    = getenv('MOODLE_DB_NAME') ?: 'moodle';
+$CFG->dbuser    = getenv('MOODLE_DB_USER') ?: 'moodle_user';
+$CFG->dbpass    = getenv('MOODLE_DB_PASSWORD') ?: '';
+$CFG->wwwroot   = getenv('MOODLE_WWWROOT') ?: 'http://localhost';
 $CFG->dataroot  = '/var/www/moodledata';
 $CFG->directorypermissions = 0755;
+```
+
+Mọi giá trị cơ sở dữ liệu và địa chỉ công khai đều đọc từ `.env`, nên bộ
+`MOODLE_DB_*` khác hoặc tên miền thật không cần sửa tệp này. Chỉ sửa `.env` rồi
+tạo lại container:
+
+```bash
+docker compose up -d moodle
 ```
 
 Giữ bản `moodle/public/.htaccess` trong repo; gói Moodle mới có thể ghi đè bằng
@@ -131,15 +142,9 @@ mất 2 đến 10 phút vì phải khởi tạo MySQL, build image, chạy `comp
 
 ### 4. Cài đặt Moodle
 
-Mở `http://<địa-chỉ-máy-chủ>` và làm theo trình cài đặt:
-
-| Trường | Giá trị |
-|---|---|
-| Database host | `db` |
-| Database name | `MOODLE_DB_NAME` |
-| Database user | `MOODLE_DB_USER` |
-| Database password | `MOODLE_DB_PASSWORD` |
-| Data directory | `/var/www/moodledata` |
+Mở `http://<địa-chỉ-máy-chủ>`. `config.php` đã có sẵn thông tin cơ sở dữ liệu và
+địa chỉ lấy từ `.env`, nên trình cài đặt bỏ qua phần cơ sở dữ liệu và chỉ hỏi tài
+khoản quản trị cùng thông tin site. Thư mục dữ liệu vẫn là `/var/www/moodledata`.
 
 ### 5. Cấu hình Redis
 
@@ -285,9 +290,18 @@ Trong `Caddyfile`, thay `:80` bằng tên miền:
 lms.example.vn {
 ```
 
-Caddy tự xin và gia hạn chứng chỉ Let's Encrypt. Sau khi đổi, cập nhật
-`$CFG->wwwroot`, bật `$CFG->sslproxy = true` nếu chạy sau proxy, thay URL trong
-cơ sở dữ liệu và xóa cache.
+Caddy tự xin và gia hạn chứng chỉ Let's Encrypt. Sau khi sửa Caddyfile, đặt địa
+chỉ công khai và chế độ TLS trong `.env` rồi tạo lại container:
+
+```bash
+MOODLE_WWWROOT=https://lms.example.vn
+MOODLE_SSLPROXY=true
+docker compose up -d moodle
+```
+
+`MOODLE_SSLPROXY=true` là bắt buộc vì Caddy kết thúc TLS rồi chuyển tiếp HTTP
+thường vào Apache. Sau đó thay URL trong cơ sở dữ liệu và xóa cache; không cần
+sửa `config.php`.
 
 ## Bảo mật
 
@@ -295,7 +309,8 @@ cơ sở dữ liệu và xóa cache.
 - Đăng nhập SSH bằng khóa, tắt xác thực mật khẩu và đăng nhập `root`.
 - `.env` có quyền `600`; ba mật khẩu MySQL root, MySQL ứng dụng và Redis phải
   khác nhau.
-- `config.php` đọc mật khẩu cơ sở dữ liệu từ `MOODLE_DB_PASSWORD`.
+- `config.php` đọc máy chủ, tên, tài khoản và mật khẩu cơ sở dữ liệu từ các biến
+  `MOODLE_DB_*`, nên không có thông tin đăng nhập nào nằm trong tệp.
 - Caddy gửi `Strict-Transport-Security` khi dùng HTTPS, đặt `Server: LMS-System`
   và thêm `Content-Security-Policy`, `X-Content-Type-Options`,
   `Referrer-Policy`, `Cross-Origin-Opener-Policy`, `Permissions-Policy`. Chính

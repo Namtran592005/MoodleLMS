@@ -645,6 +645,30 @@ docker compose restart redis
 If Redis was restarted, users are logged out once. Also confirm the cache
 definition still points at `redis` under **Plugins → Caching**.
 
+### Links and cookies point to localhost
+
+`config.php` builds the site URL from `MOODLE_WWWROOT`, so a wrong value shows up
+as links to `localhost`, failed redirects and cookies set for the wrong host. The
+entrypoint warns at startup when `APP_ENV=production` and the URL still points at
+`localhost` or `127.0.0.1`:
+
+```text
+[canh bao] MOODLE_WWWROOT=http://localhost trong moi truong production: ...
+```
+
+Set the real address in `.env`, recreate the container, then replace URLs already
+stored in the database:
+
+```bash
+MOODLE_WWWROOT=https://lms.example.vn
+MOODLE_SSLPROXY=true
+docker compose up -d moodle
+```
+
+If HTTPS ends at Caddy, `MOODLE_SSLPROXY=true` is required; without it Moodle
+generates `http://` links and can loop between redirects. A second warning appears
+when `MOODLE_SSLPROXY=true` but `MOODLE_WWWROOT` is not `https://`.
+
 ### Site broken after an upgrade
 
 ```bash

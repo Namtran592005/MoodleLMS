@@ -309,7 +309,25 @@ configure_timezone() {
   chmod 644 "$conf"
 }
 
+check_moodle_settings() {
+  wwwroot="${MOODLE_WWWROOT:-http://localhost}"
+  if [ "${APP_ENV:-production}" = "production" ]; then
+    case "$wwwroot" in
+      http://localhost|http://localhost/*|http://127.0.0.1|http://127.0.0.1/*)
+        echo "[canh bao] MOODLE_WWWROOT=${wwwroot} trong moi truong production: dat ten mien that trong .env de tranh link, cookie va redirect sai." >&2
+        ;;
+    esac
+  fi
+  if [ "${MOODLE_SSLPROXY:-false}" = "true" ]; then
+    case "$wwwroot" in
+      https://*) ;;
+      *) echo "[canh bao] MOODLE_SSLPROXY=true nhung MOODLE_WWWROOT khong bat dau bang https://." >&2 ;;
+    esac
+  fi
+}
+
 configure_apache_mpm
 configure_php_fpm
 configure_timezone
+check_moodle_settings
 start_services

@@ -74,9 +74,12 @@ chmod 600 .env
 | Variable | Meaning |
 |---|---|
 | `MYSQL_ROOT_PASSWORD` | MySQL root password, internal use only |
+| `MOODLE_DB_HOST` | Database host name, defaults to `db` |
 | `MOODLE_DB_NAME` | Database name |
 | `MOODLE_DB_USER` | MySQL account used by Moodle |
 | `MOODLE_DB_PASSWORD` | Password for that account |
+| `MOODLE_WWWROOT` | Public URL Moodle serves, defaults to `http://localhost` |
+| `MOODLE_SSLPROXY` | `true` when TLS ends at Caddy, defaults to `false` |
 | `REDIS_PASSWORD` | Redis password |
 | `RESTIC_PASSWORD` | Passphrase that encrypts the restic repository |
 | `RESTIC_REPOSITORY` | Optional, defaults to `/backup/restic` |
@@ -103,13 +106,21 @@ tar -xzf moodle-5.x.tgz -C moodle --strip-components=1
 
 ```php
 $CFG->dbtype    = 'mysqli';
-$CFG->dbhost    = 'db';
-$CFG->dbname    = 'moodle';
-$CFG->dbuser    = 'moodle_user';
-$CFG->dbpass    = getenv('MOODLE_DB_PASSWORD');
-$CFG->wwwroot   = 'http://localhost';
+$CFG->dbhost    = getenv('MOODLE_DB_HOST') ?: 'db';
+$CFG->dbname    = getenv('MOODLE_DB_NAME') ?: 'moodle';
+$CFG->dbuser    = getenv('MOODLE_DB_USER') ?: 'moodle_user';
+$CFG->dbpass    = getenv('MOODLE_DB_PASSWORD') ?: '';
+$CFG->wwwroot   = getenv('MOODLE_WWWROOT') ?: 'http://localhost';
 $CFG->dataroot  = '/var/www/moodledata';
 $CFG->directorypermissions = 0755;
+```
+
+Every database value and the public URL come from `.env`, so a different
+`MOODLE_DB_*` set or a real domain needs no edit to this file. Change `.env` and
+recreate the container instead:
+
+```bash
+docker compose up -d moodle
 ```
 
 Keep the repo copy of `moodle/public/.htaccess`; a new release tarball may
@@ -133,15 +144,10 @@ builds images, runs `composer install` and registers the Ofelia jobs.
 
 ### 4. Install Moodle
 
-Open `http://<server-address>` and follow the installer:
-
-| Field | Value |
-|---|---|
-| Database host | `db` |
-| Database name | `MOODLE_DB_NAME` |
-| Database user | `MOODLE_DB_USER` |
-| Database password | `MOODLE_DB_PASSWORD` |
-| Data directory | `/var/www/moodledata` |
+Open `http://<server-address>`. `config.php` already carries the database and URL
+settings from `.env`, so the installer skips the database form and asks only for
+the admin account and site details. The data directory stays
+`/var/www/moodledata`.
 
 ### 5. Configure Redis
 
@@ -291,8 +297,18 @@ lms.example.vn {
 ```
 
 Caddy obtains and renews Let's Encrypt certificates automatically. After the
-change, update `$CFG->wwwroot`, set `$CFG->sslproxy = true` when running behind a
-proxy, replace URLs in the database and purge caches.
+Caddyfile change, set the public URL and TLS mode in `.env` and recreate the
+container:
+
+```bash
+MOODLE_WWWROOT=https://lms.example.vn
+MOODLE_SSLPROXY=true
+docker compose up -d moodle
+```
+
+`MOODLE_SSLPROXY=true` is required because Caddy terminates TLS and forwards
+plain HTTP to Apache. Then replace URLs in the database and purge caches;
+`config.php` itself is not edited.
 
 ## Security
 
@@ -300,7 +316,8 @@ proxy, replace URLs in the database and purge caches.
 - SSH uses key authentication; password and `root` logins are disabled.
 - `.env` is mode `600`; the MySQL root, MySQL application and Redis passwords
   must differ.
-- `config.php` reads the database password from `MOODLE_DB_PASSWORD`.
+- `config.php` reads the database host, name, user and password from the
+  `MOODLE_DB_*` variables, so no credential is stored in the file.
 - Caddy sends `Strict-Transport-Security` on HTTPS, sets `Server: LMS-System`,
   and adds `Content-Security-Policy`, `X-Content-Type-Options`,
   `Referrer-Policy`, `Cross-Origin-Opener-Policy` and `Permissions-Policy`. The

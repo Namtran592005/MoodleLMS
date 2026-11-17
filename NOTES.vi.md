@@ -632,6 +632,30 @@ docker compose restart redis
 Redis khởi động lại thì người dùng bị đăng xuất một lần. Đồng thời kiểm tra cấu
 hình cache vẫn trỏ tới `redis` trong **Plugins → Caching**.
 
+### Liên kết và cookie trỏ về localhost
+
+`config.php` lấy địa chỉ site từ `MOODLE_WWWROOT`, nên giá trị sai sẽ hiện thành
+liên kết về `localhost`, chuyển hướng lỗi và cookie gắn sai máy chủ. Entrypoint
+cảnh báo lúc khởi động khi `APP_ENV=production` mà địa chỉ vẫn là `localhost`
+hoặc `127.0.0.1`:
+
+```text
+[canh bao] MOODLE_WWWROOT=http://localhost trong moi truong production: ...
+```
+
+Đặt địa chỉ thật trong `.env`, tạo lại container, rồi thay các URL đã lưu trong
+cơ sở dữ liệu:
+
+```bash
+MOODLE_WWWROOT=https://lms.example.vn
+MOODLE_SSLPROXY=true
+docker compose up -d moodle
+```
+
+Nếu Caddy kết thúc TLS thì bắt buộc `MOODLE_SSLPROXY=true`; thiếu nó Moodle sinh
+liên kết `http://` và có thể lặp chuyển hướng. Có thêm cảnh báo thứ hai khi
+`MOODLE_SSLPROXY=true` nhưng `MOODLE_WWWROOT` không bắt đầu bằng `https://`.
+
 ### Site lỗi sau khi nâng cấp
 
 ```bash
