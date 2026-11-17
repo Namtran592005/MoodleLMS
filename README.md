@@ -7,10 +7,11 @@ automatic TLS, production PHP, MySQL, Redis, cron and backups. The goal is to
 stand up an LMS on a Linux server with a single start command. The current source
 is Moodle 5.3.1 (build 20261112).
 
-The repository holds only the configuration skeleton. Moodle source,
-`moodledata/`, `backup/`, `logs/`, `.env` and internal documentation stay out of
-the repo (see `.gitignore`). The one exception is `moodle/public/.htaccess`,
-kept because it is an important Apache configuration file.
+The repository holds only the configuration skeleton and two Moodle files. Moodle
+source, `moodledata/`, `backup/`, `logs/`, `.env` and internal documentation stay
+out of the repo (see `.gitignore`). The exceptions are `moodle/public/.htaccess`,
+an important Apache configuration file, and `moodle/config.php`, which holds no
+secret: the database password is read from `MOODLE_DB_PASSWORD`.
 
 Sizing, tuning and fixes for problems seen in operation are in
 [NOTES.md](NOTES.md). This file stays focused on getting the stack running.
@@ -92,7 +93,8 @@ Worker sizing, memory behaviour and load-based values are covered in
 
 ### 2. Place the Moodle source
 
-Unpack Moodle 5.x into `moodle/`, keeping an existing `config.php`:
+Unpack Moodle 5.x into `moodle/`. The release archive has no `config.php`, so the
+copy tracked in the repo stays in place:
 
 ```bash
 mkdir -p moodle

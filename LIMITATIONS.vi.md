@@ -80,7 +80,7 @@ trường của container khác.
 |---|---|---|
 | Nâng cấp thủ công | Downtime và sai sót con người ở mỗi bản phát hành | Cao |
 | `.htaccess` có thể bị gói mới ghi đè | Schema bị tải xuống được cho tới khi khôi phục | Trung bình |
-| `config.php` không nằm trong repo | Máy mới phải dựng lại bằng tay | Trung bình |
+| `config.php` trong repo ghim `wwwroot` | Bản clone ở tên miền khác trả URL sai cho tới khi sửa `wwwroot` | Thấp |
 | `docs/` bị gitignore | Tri thức vận hành chỉ nằm trên một máy | Trung bình |
 | Không monitoring, không alert | Người dùng phát hiện lỗi trước đội vận hành | Cao |
 | Một scheduler cron duy nhất | Ofelia dừng là không task nào chạy và không ai biết | Trung bình |

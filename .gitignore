@@ -3,6 +3,7 @@
 !.env.example
 
 moodle/*
+!moodle/config.php
 !moodle/public/
 moodle/public/*
 !moodle/public/.htaccess

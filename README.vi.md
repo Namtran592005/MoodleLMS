@@ -7,9 +7,11 @@ production, MySQL, Redis, cron và backup. Mục tiêu là dựng hệ thống L
 chủ Linux bằng một lệnh khởi động. Mã nguồn hiện tại là Moodle 5.3.1 (build
 20261112).
 
-Kho chỉ chứa khung cấu hình. Mã nguồn Moodle, `moodledata/`, `backup/`, `logs/`,
-`.env` và tài liệu nội bộ không đưa vào kho (xem `.gitignore`). Riêng
-`moodle/public/.htaccess` được giữ lại vì là tệp cấu hình Apache quan trọng.
+Kho chỉ chứa khung cấu hình và hai tệp của Moodle. Mã nguồn Moodle,
+`moodledata/`, `backup/`, `logs/`, `.env` và tài liệu nội bộ không đưa vào kho
+(xem `.gitignore`). Hai ngoại lệ là `moodle/public/.htaccess`, tệp cấu hình
+Apache quan trọng, và `moodle/config.php`, tệp không chứa bí mật vì mật khẩu cơ
+sở dữ liệu đọc từ `MOODLE_DB_PASSWORD`.
 
 Phần tính toán RAM, tinh chỉnh và cách xử lý lỗi nằm trong
 [NOTES.vi.md](NOTES.vi.md). Tệp này chỉ tập trung vào việc dựng hệ thống chạy được.
@@ -89,7 +91,8 @@ Cách tính worker, hành vi bộ nhớ và giá trị theo tải có trong
 
 ### 2. Đặt mã nguồn Moodle
 
-Giải nén Moodle 5.x vào `moodle/`, giữ lại `config.php` nếu đã có:
+Giải nén Moodle 5.x vào `moodle/`. Gói phát hành không có `config.php`, nên bản
+đang được theo dõi trong repo vẫn giữ nguyên:
 
 ```bash
 mkdir -p moodle

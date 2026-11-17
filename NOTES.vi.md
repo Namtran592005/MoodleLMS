@@ -641,8 +641,8 @@ docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/maintenance.php --disable
 ```
 
-Giữ lại `config.php` và `moodle/public/.htaccess` khi giải nén mã nguồn mới. Sao
-lưu cơ sở dữ liệu trước khi nâng cấp.
+`config.php` và `moodle/public/.htaccess` đang được theo dõi trong git; giữ cả
+hai khi giải nén mã nguồn mới. Sao lưu cơ sở dữ liệu trước khi nâng cấp.
 
 ### Đĩa và log
 

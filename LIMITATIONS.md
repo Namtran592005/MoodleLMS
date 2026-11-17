@@ -81,7 +81,7 @@ environment of other containers.
 |---|---|---|
 | Manual upgrades | Downtime and human error on every release | High |
 | `.htaccess` can be overwritten by a release | Schema files become downloadable until restored | Medium |
-| `config.php` not in the repo | A new machine needs manual reconstruction | Medium |
+| `config.php` in the repo pins `wwwroot` | A clone on another domain serves wrong URLs until `wwwroot` is edited | Low |
 | `docs/` is gitignored | Operational knowledge lives on one machine | Medium |
 | No monitoring or alerting | Failures are found by users, not by the team | High |
 | Single cron scheduler | If Ofelia stops, no task runs and nothing reports it | Medium |

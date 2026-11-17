@@ -654,8 +654,8 @@ docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/maintenance.php --disable
 ```
 
-Keep `config.php` and `moodle/public/.htaccess` when unpacking the new source.
-Take a database backup before the upgrade.
+`config.php` and `moodle/public/.htaccess` are tracked in git; keep both when
+unpacking the new source. Take a database backup before the upgrade.
 
 ### Disk and logs
 
