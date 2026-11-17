@@ -260,18 +260,21 @@ privileges, so a compromised Ofelia could create a privileged container mounting
 `/` and take the host. Label mode also made Ofelia list and inspect every
 container, exposing all environment secrets.
 
-**Change.** Three files:
+**Change.** Four files:
 
 ```text
 docker-compose.yml   add socket-proxy (CetusGuard), add internal socket_net,
                      move Ofelia to config mode, remove labels from db and moodle
 ofelia/config.ini    the four jobs
 ofelia/rules.list    exec create/start/inspect on two named containers
+cetusguard/Dockerfile add a static busybox to the scratch image for /_ping
 ```
 
 Only the proxy keeps the socket. Its API surface is exec on two containers;
-everything else is rejected before it reaches the daemon. The proxy is pinned to
-`hectorm/cetusguard:v1.2.0` and Ofelia to `mcuadros/ofelia:0.3.22`.
+everything else is rejected before it reaches the daemon. The proxy is built
+locally from `./cetusguard` on top of `hectorm/cetusguard:v1.2.0`; the only
+addition is the static busybox used by its healthcheck. Ofelia is pinned to
+`mcuadros/ofelia:0.3.22`.
 
 **Verify.**
 
@@ -282,9 +285,10 @@ docker logs moodle_cron_scheduler 2>&1 | grep 'New job registered'
 docker exec moodle_cron_scheduler date
 ```
 
-All six containers must be `Up`, four jobs must be registered, and the date must
-show `+07`. The rule test in [NOTES.md](NOTES.md#scheduler-and-docker-api-access)
-must answer `403` for `containers/create`.
+All six containers must be `Up` and `(healthy)`, four jobs must be registered, and
+the date must show `+07`. The rule test in
+[NOTES.md](NOTES.md#scheduler-and-docker-api-access) must answer `403` for
+`containers/create`.
 
 **Remaining risk.** A compromised Ofelia still runs root commands inside
 `moodle_web` and `moodle_db`, because exec is exactly what the scheduler needs.

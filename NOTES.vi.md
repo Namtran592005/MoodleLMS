@@ -473,6 +473,14 @@ tệp chỉ cần `GET /_ping`, `GET /info` và các lệnh exec mà bốn job t
 Chỉ `socket-proxy` mount `/var/run/docker.sock` ở dạng chỉ đọc. Ofelia gọi
 `tcp://socket-proxy:2375` qua `socket_net`, mạng bridge đặt `internal: true`:
 không mở cổng, không có đường ra ngoài Docker, và chỉ hai service này tham gia.
+
+Image proxy được build tại chỗ từ `./cetusguard`, dựa trên
+`hectorm/cetusguard:v1.2.0`. Image gốc là `scratch`, không có HTTP client;
+Dockerfile chỉ copy thêm busybox tĩnh cho healthcheck. Healthcheck gọi
+`GET /_ping` mỗi 30 giây, và `cron` chờ `service_healthy` rồi mới khởi động. Vì
+là image build, nó không nằm trong `docker compose pull`;
+`docker compose up -d --build` sẽ build nó.
+
 `/_ping`, `/version`, `/info` do rule dựng sẵn của CetusGuard cho phép; phần còn
 lại nằm trong `ofelia/rules.list`:
 

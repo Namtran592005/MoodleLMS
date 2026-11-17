@@ -185,7 +185,9 @@ services:
       - moodle_net
 
   socket-proxy:
-    image: hectorm/cetusguard:v1.2.0
+    image: moodle-cetusguard:latest
+    build:
+      context: ./cetusguard
     container_name: moodle_socket_proxy
     restart: always
     user: "0:0"
@@ -198,6 +200,12 @@ services:
     memswap_limit: 64m
     pids_limit: 64
     logging: *default-logging
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2375/_ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     environment:
       CETUSGUARD_BACKEND_ADDR: unix:///var/run/docker.sock
       CETUSGUARD_FRONTEND_ADDR: tcp://0.0.0.0:2375
@@ -235,7 +243,7 @@ services:
       start_period: 10s
     depends_on:
       socket-proxy:
-        condition: service_started
+        condition: service_healthy
       moodle:
         condition: service_healthy
     command: daemon --config=/etc/ofelia/config.ini

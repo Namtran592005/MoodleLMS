@@ -23,7 +23,7 @@ Sizing, tuning and fixes for problems seen in operation are in
 | `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | internal 3306 |
 | `redis` | `redis:latest` | Cache and sessions, 256 MB limit | internal 6379 |
 | `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | internal 80 |
-| `socket-proxy` | `hectorm/cetusguard:v1.2.0` | Filters the Docker API down to exec calls on two containers | internal 2375 |
+| `socket-proxy` | build `./cetusguard` | Filters the Docker API down to exec calls on two containers | internal 2375 |
 | `cron` | `mcuadros/ofelia:0.3.22` | Moodle cron, database dump, restic backup, log rotation | not exposed |
 
 Only `caddy` publishes ports. `db`, `redis` and `moodle` are reachable only on
@@ -117,15 +117,16 @@ replace it with the default file. Restoring it is described in
 ### 3. Pull images and start
 
 ```bash
-docker compose pull db redis socket-proxy cron
+docker compose pull db redis cron
 docker compose up -d --build
 ```
 
-Four base images (`mysql:9`, `redis:latest`,
-`hectorm/cetusguard:v1.2.0`, `mcuadros/ofelia:0.3.22`) are pulled; `moodle` and
-`caddy` are built from `./php` and `./caddy`. The first run takes 2 to 10 minutes
-because it initializes MySQL, builds images, runs `composer install` and
-registers the Ofelia jobs.
+Three base images (`mysql:9`, `redis:latest`, `mcuadros/ofelia:0.3.22`) are
+pulled directly; `moodle`, `caddy` and `socket-proxy` are built from `./php`,
+`./caddy` and `./cetusguard`. The proxy build starts from
+`hectorm/cetusguard:v1.2.0` and adds only a static busybox for its healthcheck.
+The first run takes 2 to 10 minutes because it initializes MySQL, builds images,
+runs `composer install` and registers the Ofelia jobs.
 
 ### 4. Install Moodle
 
@@ -244,7 +245,9 @@ Ofelia no longer mounts the Docker socket. It sends its API calls to
 `socket-proxy` (CetusGuard) over the private `socket_net`, and the proxy only
 allows exec calls inside `moodle_web` and `moodle_db`. Creating, starting or
 deleting containers is rejected with `403`, so a compromised scheduler cannot
-reach the host. The remaining risk and the exact allowlist are in
+reach the host. The proxy is checked every 30 seconds against `/_ping`, and
+Ofelia waits for that healthcheck before it starts. The remaining risk and the
+exact allowlist are in
 [NOTES.md](NOTES.md#scheduler-and-docker-api-access).
 
 ### Logs

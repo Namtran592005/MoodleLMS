@@ -255,18 +255,20 @@ socket; request đến được daemon vẫn chạy với quyền của daemon, 
 chiếm có thể tạo container privileged mount `/` và lấy host. Chế độ nhãn còn
 khiến Ofelia liệt kê và inspect mọi container, lộ toàn bộ biến môi trường.
 
-**Thay đổi.** Ba tệp:
+**Thay đổi.** Bốn tệp:
 
 ```text
 docker-compose.yml   thêm socket-proxy (CetusGuard), thêm socket_net nội bộ,
                      chuyển Ofelia sang chế độ tệp, bỏ nhãn khỏi db và moodle
 ofelia/config.ini    bốn job
 ofelia/rules.list    allowlist: exec create/start/inspect trên hai container
+cetusguard/Dockerfile thêm busybox tĩnh vào image scratch cho /_ping
 ```
 
 Chỉ proxy giữ socket. Bề mặt API của nó là exec trên hai container; mọi thứ
-khác bị chặn trước khi tới daemon. Proxy ghim `hectorm/cetusguard:v1.2.0`, Ofelia
-ghim `mcuadros/ofelia:0.3.22`.
+khác bị chặn trước khi tới daemon. Proxy build tại chỗ từ `./cetusguard`, dựa
+trên `hectorm/cetusguard:v1.2.0`; phần thêm duy nhất là busybox tĩnh cho
+healthcheck. Ofelia ghim `mcuadros/ofelia:0.3.22`.
 
 **Kiểm tra.**
 
@@ -277,8 +279,8 @@ docker logs moodle_cron_scheduler 2>&1 | grep 'New job registered'
 docker exec moodle_cron_scheduler date
 ```
 
-Cả sáu container phải `Up`, bốn job phải được đăng ký, và ngày phải hiện `+07`.
-Bài test rule trong
+Cả sáu container phải `Up` và `(healthy)`, bốn job phải được đăng ký, và ngày phải
+hiện `+07`. Bài test rule trong
 [NOTES.vi.md](NOTES.vi.md#scheduler-và-quyền-docker-api) phải trả `403` cho
 `containers/create`.
 

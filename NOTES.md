@@ -483,8 +483,17 @@ would expose the environment of every container on the host, including
 Only `socket-proxy` mounts `/var/run/docker.sock`, read-only. Ofelia reaches it
 at `tcp://socket-proxy:2375` over `socket_net`, a bridge network marked
 `internal: true`: no published port, no route outside Docker, and only these two
-services are attached. `/_ping`, `/version` and `/info` come from the built-in
-CetusGuard rules; everything else is in `ofelia/rules.list`:
+services are attached.
+
+The proxy image is built locally from `./cetusguard` on top of
+`hectorm/cetusguard:v1.2.0`. The upstream image is `scratch`, so it has no HTTP
+client; the Dockerfile copies only a static busybox for the healthcheck. That
+check calls `GET /_ping` every 30 seconds, and `cron` waits for
+`service_healthy` before it starts. Because the image is built, it is not part of
+`docker compose pull`; `docker compose up -d --build` builds it.
+
+`/_ping`, `/version` and `/info` come from the built-in CetusGuard rules;
+everything else is in `ofelia/rules.list`:
 
 ```text
 POST %API_PREFIX%/containers/moodle_web/exec
