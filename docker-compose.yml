@@ -6,7 +6,7 @@ x-logging: &default-logging
 
 services:
   caddy:
-    image: moodle-caddy:latest
+    image: moodle-caddy:2.11
     build:
       context: ./caddy
     container_name: moodle_caddy
@@ -44,7 +44,7 @@ services:
         condition: service_healthy
 
   db:
-    image: mysql:9
+    image: mysql:9.7
     container_name: moodle_db
     restart: always
     logging: *default-logging
@@ -93,7 +93,7 @@ services:
       - moodle_net
 
   redis:
-    image: redis:latest
+    image: redis:8.10
     container_name: moodle_redis
     restart: always
     logging: *default-logging
@@ -133,7 +133,7 @@ services:
       - moodle_net
 
   moodle:
-    image: moodle-server-moodle:latest
+    image: moodle-server-moodle:5.3
     build:
       context: ./php
       args:
@@ -185,7 +185,7 @@ services:
       - moodle_net
 
   socket-proxy:
-    image: moodle-cetusguard:latest
+    image: moodle-cetusguard:v1
     build:
       context: ./cetusguard
     container_name: moodle_socket_proxy
@@ -218,7 +218,7 @@ services:
       - socket_net
 
   cron:
-    image: mcuadros/ofelia:0.3.22
+    image: mcuadros/ofelia:0.3
     container_name: moodle_cron_scheduler
     restart: always
     mem_limit: 256m

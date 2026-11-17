@@ -1,8 +1,8 @@
-FROM caddy:builder-alpine AS builder
+FROM caddy:2.11-builder-alpine AS builder
 
-RUN xcaddy build --with github.com/mholt/caddy-ratelimit
+RUN xcaddy build v2.11.9 --with github.com/mholt/caddy-ratelimit
 
-FROM caddy:alpine
+FROM caddy:2.11-alpine
 
 RUN apk add --no-cache tzdata
 

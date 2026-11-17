@@ -62,7 +62,7 @@ is still open.
 | Ofelia can exec as root in `moodle_web` and `moodle_db` through the proxy | A compromised scheduler controls the site and its database, but cannot create containers or reach the host | High |
 | Secrets in plain `.env` | No rotation, no secrets manager, readable by the deploy account | Medium |
 | No fail2ban or WAF | Only login endpoints are rate-limited; scanning and abuse are not blocked | Medium |
-| Mutable image tags (`mysql:9`, `redis:latest`) | Rebuilds are not reproducible; upgrades arrive unannounced | Medium |
+| Mutable minor image tags (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) | Patch releases still arrive without notice; builds are not digest-pinned | Low |
 | No image scanning or signing | Vulnerable base images go unnoticed | Medium |
 | No enforced 2FA or SSO | Password-only accounts, no central identity | Medium |
 | CSP still needs `'unsafe-inline'` and `'unsafe-eval'` | Moodle prints inline scripts and TinyMCE calls `new Function`, so injected inline script is not blocked | Medium |
@@ -272,9 +272,9 @@ cetusguard/Dockerfile add a static busybox to the scratch image for /_ping
 
 Only the proxy keeps the socket. Its API surface is exec on two containers;
 everything else is rejected before it reaches the daemon. The proxy is built
-locally from `./cetusguard` on top of `hectorm/cetusguard:v1.2.0`; the only
+locally from `./cetusguard` on top of `hectorm/cetusguard:v1`; the only
 addition is the static busybox used by its healthcheck. Ofelia is pinned to
-`mcuadros/ofelia:0.3.22`.
+`mcuadros/ofelia:0.3`.
 
 **Verify.**
 

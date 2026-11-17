@@ -18,12 +18,12 @@ Phần tính toán RAM, tinh chỉnh và cách xử lý lỗi nằm trong
 
 | Dịch vụ | Image | Vai trò | Cổng |
 |---|---|---|---|
-| `caddy` | build `./caddy` | Reverse proxy (Caddy latest + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
-| `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | nội bộ 3306 |
-| `redis` | `redis:latest` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
-| `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | nội bộ 80 |
-| `socket-proxy` | build `./cetusguard` | Lọc Docker API, chỉ cho exec vào hai container | nội bộ 2375 |
-| `cron` | `mcuadros/ofelia:0.3.22` | Cron Moodle, dump DB, backup restic, xoay log | không mở |
+| `caddy` | build `./caddy` (`moodle-caddy:2.11`) | Reverse proxy (Caddy 2.11 + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
+| `db` | `mysql:9.7` | MySQL 9.7 LTS, `utf8mb4` | nội bộ 3306 |
+| `redis` | `redis:8.10` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
+| `moodle` | build `./php` (`moodle-server-moodle:5.3`) | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | nội bộ 80 |
+| `socket-proxy` | build `./cetusguard` (`moodle-cetusguard:v1`) | Lọc Docker API, chỉ cho exec vào hai container | nội bộ 2375 |
+| `cron` | `mcuadros/ofelia:0.3` | Cron Moodle, dump DB, backup restic, xoay log | không mở |
 
 Chỉ `caddy` mở cổng ra ngoài. `db`, `redis` và `moodle` chỉ truy cập được trong
 `moodle_net`; `cron` và `socket-proxy` dùng chung mạng nội bộ riêng `socket_net`,
@@ -118,11 +118,13 @@ docker compose pull db redis cron
 docker compose up -d --build
 ```
 
-Ba image nền (`mysql:9`, `redis:latest`, `mcuadros/ofelia:0.3.22`) được pull trực
+Ba image nền (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) được pull trực
 tiếp; `moodle`, `caddy` và `socket-proxy` build từ `./php`, `./caddy` và
-`./cetusguard`. Bản build proxy bắt đầu từ `hectorm/cetusguard:v1.2.0` và chỉ
-thêm busybox tĩnh cho healthcheck. Lần chạy đầu mất 2 đến 10 phút vì phải khởi
-tạo MySQL, build image, chạy `composer install` và đăng ký tác vụ Ofelia.
+`./cetusguard`, gắn tag `moodle-server-moodle:5.3`, `moodle-caddy:2.11` và
+`moodle-cetusguard:v1`. Bản build Caddy bắt đầu từ `caddy:2.11-*`, bản build proxy
+từ `hectorm/cetusguard:v1` và chỉ thêm busybox tĩnh cho healthcheck. Lần chạy đầu
+mất 2 đến 10 phút vì phải khởi tạo MySQL, build image, chạy `composer install` và
+đăng ký tác vụ Ofelia.
 
 ### 4. Cài đặt Moodle
 

@@ -61,7 +61,7 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | Ofelia exec được root trong `moodle_web` và `moodle_db` qua proxy | Scheduler bị chiếm kiểm soát website và cơ sở dữ liệu, nhưng không tạo được container hay chạm host | Cao |
 | Bí mật nằm dạng chữ trong `.env` | Không xoay vòng, không secrets manager, tài khoản triển khai đọc được | Trung bình |
 | Không fail2ban, không WAF | Chỉ endpoint đăng nhập bị giới hạn; quét cổng và lạm dụng không bị chặn | Trung bình |
-| Thẻ image động (`mysql:9`, `redis:latest`) | Rebuild không tái lập được, nâng cấp đến mà không báo trước | Trung bình |
+| Thẻ image còn trôi trong dòng minor (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) | Bản vá vẫn đến mà không báo trước; build chưa ghim digest | Thấp |
 | Không quét hay ký image | Image nền có lỗ hổng mà không biết | Trung bình |
 | Không bắt buộc 2FA hay SSO | Chỉ mật khẩu, không có định danh tập trung | Trung bình |
 | CSP vẫn cần `'unsafe-inline'` và `'unsafe-eval'` | Moodle in script nội tuyến và TinyMCE gọi `new Function`, nên script chèn trong trang không bị chặn | Trung bình |
@@ -267,8 +267,8 @@ cetusguard/Dockerfile thêm busybox tĩnh vào image scratch cho /_ping
 
 Chỉ proxy giữ socket. Bề mặt API của nó là exec trên hai container; mọi thứ
 khác bị chặn trước khi tới daemon. Proxy build tại chỗ từ `./cetusguard`, dựa
-trên `hectorm/cetusguard:v1.2.0`; phần thêm duy nhất là busybox tĩnh cho
-healthcheck. Ofelia ghim `mcuadros/ofelia:0.3.22`.
+trên `hectorm/cetusguard:v1`; phần thêm duy nhất là busybox tĩnh cho
+healthcheck. Ofelia ghim `mcuadros/ofelia:0.3`.
 
 **Kiểm tra.**
 

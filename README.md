@@ -19,12 +19,12 @@ Sizing, tuning and fixes for problems seen in operation are in
 
 | Service | Image | Role | Ports |
 |---|---|---|---|
-| `caddy` | build `./caddy` | Reverse proxy (Caddy latest + rate limit), automatic TLS, security headers | 80, 443, 443/udp |
-| `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | internal 3306 |
-| `redis` | `redis:latest` | Cache and sessions, 256 MB limit | internal 6379 |
-| `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | internal 80 |
-| `socket-proxy` | build `./cetusguard` | Filters the Docker API down to exec calls on two containers | internal 2375 |
-| `cron` | `mcuadros/ofelia:0.3.22` | Moodle cron, database dump, restic backup, log rotation | not exposed |
+| `caddy` | build `./caddy` (`moodle-caddy:2.11`) | Reverse proxy (Caddy 2.11 + rate limit), automatic TLS, security headers | 80, 443, 443/udp |
+| `db` | `mysql:9.7` | MySQL 9.7 LTS, `utf8mb4` | internal 3306 |
+| `redis` | `redis:8.10` | Cache and sessions, 256 MB limit | internal 6379 |
+| `moodle` | build `./php` (`moodle-server-moodle:5.3`) | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | internal 80 |
+| `socket-proxy` | build `./cetusguard` (`moodle-cetusguard:v1`) | Filters the Docker API down to exec calls on two containers | internal 2375 |
+| `cron` | `mcuadros/ofelia:0.3` | Moodle cron, database dump, restic backup, log rotation | not exposed |
 
 Only `caddy` publishes ports. `db`, `redis` and `moodle` are reachable only on
 `moodle_net`; `cron` and `socket-proxy` share the separate internal `socket_net`
@@ -121,12 +121,13 @@ docker compose pull db redis cron
 docker compose up -d --build
 ```
 
-Three base images (`mysql:9`, `redis:latest`, `mcuadros/ofelia:0.3.22`) are
-pulled directly; `moodle`, `caddy` and `socket-proxy` are built from `./php`,
-`./caddy` and `./cetusguard`. The proxy build starts from
-`hectorm/cetusguard:v1.2.0` and adds only a static busybox for its healthcheck.
-The first run takes 2 to 10 minutes because it initializes MySQL, builds images,
-runs `composer install` and registers the Ofelia jobs.
+Three base images (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) are pulled
+directly; `moodle`, `caddy` and `socket-proxy` are built from `./php`, `./caddy`
+and `./cetusguard`, tagged `moodle-server-moodle:5.3`, `moodle-caddy:2.11` and
+`moodle-cetusguard:v1`. The caddy build starts from `caddy:2.11-*`, and the proxy
+build from `hectorm/cetusguard:v1`; the only addition is a static busybox for its
+healthcheck. The first run takes 2 to 10 minutes because it initializes MySQL,
+builds images, runs `composer install` and registers the Ofelia jobs.
 
 ### 4. Install Moodle
 

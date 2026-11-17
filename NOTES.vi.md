@@ -264,8 +264,8 @@ docker compose up -d --no-build
 Hoặc dùng `sh scripts/images-save.sh` và `sh scripts/images-load.sh`. Tệp image
 chỉ chứa image Docker, không chứa `moodle/`, `moodledata/`, `.env` hay dữ liệu
 MySQL; phải sao chép các phần đó và `backup/moodle_latest.sql` riêng. Tên image
-đã cố định là `moodle-server-moodle:latest` và `moodle-caddy:latest` nên thư mục
-dự án có thể đặt tên bất kỳ.
+đã cố định là `moodle-server-moodle:5.3`, `moodle-caddy:2.11` và
+`moodle-cetusguard:v1` nên thư mục dự án có thể đặt tên bất kỳ.
 
 ### Gói ngôn ngữ tùy chỉnh
 
@@ -475,7 +475,7 @@ Chỉ `socket-proxy` mount `/var/run/docker.sock` ở dạng chỉ đọc. Ofeli
 không mở cổng, không có đường ra ngoài Docker, và chỉ hai service này tham gia.
 
 Image proxy được build tại chỗ từ `./cetusguard`, dựa trên
-`hectorm/cetusguard:v1.2.0`. Image gốc là `scratch`, không có HTTP client;
+`hectorm/cetusguard:v1`. Image gốc là `scratch`, không có HTTP client;
 Dockerfile chỉ copy thêm busybox tĩnh cho healthcheck. Healthcheck gọi
 `GET /_ping` mỗi 30 giây, và `cron` chờ `service_healthy` rồi mới khởi động. Vì
 là image build, nó không nằm trong `docker compose pull`;
@@ -539,7 +539,7 @@ Kết quả phải là `403`.
 
 ### Định dạng lịch của Ofelia
 
-Ofelia 0.3.x, ghim ở `mcuadros/ofelia:0.3.22`, vẫn bắt buộc trường giây ở đầu:
+Ofelia 0.3.x, ghim ở `mcuadros/ofelia:0.3`, vẫn bắt buộc trường giây ở đầu:
 `0 0 3 * * *` là 03:00:00, còn `0 3 * * *` là mỗi giờ vào phút 3. Dạng năm
 trường trông hợp lệ và không báo lỗi, nên một job hằng ngày âm thầm thành mỗi
 giờ một lần.

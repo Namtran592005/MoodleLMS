@@ -264,8 +264,8 @@ docker compose up -d --no-build
 Or use `sh scripts/images-save.sh` and `sh scripts/images-load.sh`. The archive
 holds only Docker images, not `moodle/`, `moodledata/`, `.env` or MySQL data;
 copy those and `backup/moodle_latest.sql` separately. Image names are fixed as
-`moodle-server-moodle:latest` and `moodle-caddy:latest`, so the directory can
-have any name.
+`moodle-server-moodle:5.3`, `moodle-caddy:2.11` and `moodle-cetusguard:v1`,
+so the directory can have any name.
 
 ### Custom language pack
 
@@ -486,7 +486,7 @@ at `tcp://socket-proxy:2375` over `socket_net`, a bridge network marked
 services are attached.
 
 The proxy image is built locally from `./cetusguard` on top of
-`hectorm/cetusguard:v1.2.0`. The upstream image is `scratch`, so it has no HTTP
+`hectorm/cetusguard:v1`. The upstream image is `scratch`, so it has no HTTP
 client; the Dockerfile copies only a static busybox for the healthcheck. That
 check calls `GET /_ping` every 30 seconds, and `cron` waits for
 `service_healthy` before it starts. Because the image is built, it is not part of
@@ -551,7 +551,7 @@ The answer must be `403`.
 
 ### Ofelia schedule format
 
-Ofelia 0.3.x, pinned here to `mcuadros/ofelia:0.3.22`, still requires the seconds
+Ofelia 0.3.x, pinned here to `mcuadros/ofelia:0.3`, still requires the seconds
 field first: `0 0 3 * * *` means 03:00:00, while `0 3 * * *` means every hour at
 minute 3. The five-field form looks valid and produces no error, so a daily job
 silently turns hourly.
