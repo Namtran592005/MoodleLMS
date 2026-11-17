@@ -59,16 +59,21 @@ is still open.
 
 | Limitation | Impact | Severity |
 |---|---|---|
-| Ofelia mounts the Docker socket | Docker API access is effectively root on the host | High |
+| Ofelia can exec as root in `moodle_web` and `moodle_db` through the proxy | A compromised scheduler controls the site and its database, but cannot create containers or reach the host | High |
 | Secrets in plain `.env` | No rotation, no secrets manager, readable by the deploy account | Medium |
 | No fail2ban or WAF | Only login endpoints are rate-limited; scanning and abuse are not blocked | Medium |
-| Mutable image tags (`mysql:9`, `redis:latest`, `ofelia:latest`) | Rebuilds are not reproducible; upgrades arrive unannounced | Medium |
+| Mutable image tags (`mysql:9`, `redis:latest`) | Rebuilds are not reproducible; upgrades arrive unannounced | Medium |
 | No image scanning or signing | Vulnerable base images go unnoticed | Medium |
 | No enforced 2FA or SSO | Password-only accounts, no central identity | Medium |
 | CSP still needs `'unsafe-inline'` and `'unsafe-eval'` | Moodle prints inline scripts and TinyMCE calls `new Function`, so injected inline script is not blocked | Medium |
 | CSP allows only YouTube | Vimeo, Google Drive and external images in course content are blocked by design | Low |
 | No antivirus on uploads | Malicious files are stored and served | Low |
 | Logs only on local disk | An attacker who gets in can erase the evidence | Low |
+
+Only CetusGuard holds `/var/run/docker.sock`, and its allowlist permits nothing
+but exec calls on `moodle_web` and `moodle_db` (Fix 4). The scheduler never sees
+the socket, cannot create, start or delete containers, and cannot inspect the
+environment of other containers.
 
 ## Operations
 
@@ -240,3 +245,56 @@ rclone lsl remote:moodle/restic | tail -3
 **Trade-offs.** Remote storage costs money and rclone credentials sit on the
 host (keep them in a `600` file). Restoring from remote requires downloading
 first, which adds time to the RTO. Do a restore drill after the first month.
+
+## Fix 4: filter the Docker API with CetusGuard (applied)
+
+**Status.** Applied on 2026-11-16. Ofelia no longer mounts the socket.
+`socket-proxy` holds it and allows four exec routes. Measured on the running
+stack: `containers/create`, `containers/start`, `containers/delete` and
+`containers/json` answer `403`; exec create on `moodle_web` and `moodle_db`
+answers `201`; the minute cron completes through the proxy.
+
+**Before.** `cron` mounted `/var/run/docker.sock:ro`. `:ro` only prevents writes
+to the socket file; every request that reaches the daemon still runs with daemon
+privileges, so a compromised Ofelia could create a privileged container mounting
+`/` and take the host. Label mode also made Ofelia list and inspect every
+container, exposing all environment secrets.
+
+**Change.** Three files:
+
+```text
+docker-compose.yml   add socket-proxy (CetusGuard), add internal socket_net,
+                     move Ofelia to config mode, remove labels from db and moodle
+ofelia/config.ini    the four jobs
+ofelia/rules.list    exec create/start/inspect on two named containers
+```
+
+Only the proxy keeps the socket. Its API surface is exec on two containers;
+everything else is rejected before it reaches the daemon. The proxy is pinned to
+`hectorm/cetusguard:v1.2.0` and Ofelia to `mcuadros/ofelia:0.3.22`.
+
+**Verify.**
+
+```bash
+docker compose ps
+docker logs moodle_socket_proxy 2>&1 | tail -n 10
+docker logs moodle_cron_scheduler 2>&1 | grep 'New job registered'
+docker exec moodle_cron_scheduler date
+```
+
+All six containers must be `Up`, four jobs must be registered, and the date must
+show `+07`. The rule test in [NOTES.md](NOTES.md#scheduler-and-docker-api-access)
+must answer `403` for `containers/create`.
+
+**Remaining risk.** A compromised Ofelia still runs root commands inside
+`moodle_web` and `moodle_db`, because exec is exactly what the scheduler needs.
+It can read `config.php`, the database password and `RESTIC_PASSWORD`, alter the
+site or the database, and delete local backups. It cannot create, start, stop or
+delete containers, read images, volumes or networks, or reach the host
+filesystem. Removing this last risk means removing the scheduler, not tightening
+the proxy.
+
+**Trade-offs.** One more container and a second network to keep in mind. If the
+proxy is down, no scheduled task runs, and the Moodle cron runs every minute, so
+the failure is visible quickly. Container names now appear in three places
+(`docker-compose.yml`, `ofelia/config.ini`, `ofelia/rules.list`).

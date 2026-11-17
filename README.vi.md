@@ -22,10 +22,12 @@ Phần tính toán RAM, tinh chỉnh và cách xử lý lỗi nằm trong
 | `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | nội bộ 3306 |
 | `redis` | `redis:latest` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
 | `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | nội bộ 80 |
-| `cron` | `mcuadros/ofelia` | Cron Moodle, dump DB, backup restic, xoay log | không mở |
+| `socket-proxy` | `hectorm/cetusguard:v1.2.0` | Lọc Docker API, chỉ cho exec vào hai container | nội bộ 2375 |
+| `cron` | `mcuadros/ofelia:0.3.22` | Cron Moodle, dump DB, backup restic, xoay log | không mở |
 
-Chỉ `caddy` mở cổng ra ngoài; các dịch vụ còn lại chỉ truy cập được trong mạng
-`moodle_net`.
+Chỉ `caddy` mở cổng ra ngoài. `db`, `redis` và `moodle` chỉ truy cập được trong
+`moodle_net`; `cron` và `socket-proxy` dùng chung mạng nội bộ riêng `socket_net`,
+mạng này không có đường ra ngoài.
 
 ## Kiến trúc
 
@@ -112,12 +114,13 @@ bản mặc định. Cách khôi phục nằm trong
 ### 3. Tải image và khởi động
 
 ```bash
-docker compose pull db redis cron
+docker compose pull db redis socket-proxy cron
 docker compose up -d --build
 ```
 
-Ba image nền (`mysql:9`, `redis:latest`, `mcuadros/ofelia:latest`) được pull; hai
-dịch vụ `moodle` và `caddy` build từ `./php` và `./caddy`. Lần chạy đầu mất 2 đến
+Bốn image nền (`mysql:9`, `redis:latest`,
+`hectorm/cetusguard:v1.2.0`, `mcuadros/ofelia:0.3.22`) được pull; hai dịch vụ
+`moodle` và `caddy` build từ `./php` và `./caddy`. Lần chạy đầu mất 2 đến
 10 phút vì phải khởi tạo MySQL, build image, chạy `composer install` và đăng ký
 tác vụ Ofelia.
 
@@ -231,6 +234,13 @@ Ofelia chạy `admin/cli/cron.php` mỗi phút bằng UID của tài khoản tri
 `--keep-alive=0`, nên mỗi lần chạy kết thúc ngay sau khi xử lý task. Service
 `cron` giới hạn 256 MB và tự khởi động lại nếu vượt giới hạn. Mọi job dùng múi
 giờ `TZ` trong `.env`, mặc định `Asia/Ho_Chi_Minh`.
+
+Ofelia không còn mount Docker socket. Nó gửi lệnh API tới `socket-proxy`
+(CetusGuard) qua mạng riêng `socket_net`, và proxy chỉ cho exec bên trong
+`moodle_web` và `moodle_db`. Tạo, khởi động hay xóa container đều bị trả `403`,
+nên kẻ tấn công chiếm được scheduler cũng không lên được host. Rủi ro còn lại và
+danh sách allowlist nằm trong
+[NOTES.vi.md](NOTES.vi.md#scheduler-và-quyền-docker-api).
 
 ### Log
 

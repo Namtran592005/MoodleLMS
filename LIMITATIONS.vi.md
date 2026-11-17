@@ -58,16 +58,21 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 
 | Hạn chế | Ảnh hưởng | Mức |
 |---|---|---|
-| Ofelia mount Docker socket | Quyền qua Docker API tương đương root trên host | Cao |
+| Ofelia exec được root trong `moodle_web` và `moodle_db` qua proxy | Scheduler bị chiếm kiểm soát website và cơ sở dữ liệu, nhưng không tạo được container hay chạm host | Cao |
 | Bí mật nằm dạng chữ trong `.env` | Không xoay vòng, không secrets manager, tài khoản triển khai đọc được | Trung bình |
 | Không fail2ban, không WAF | Chỉ endpoint đăng nhập bị giới hạn; quét cổng và lạm dụng không bị chặn | Trung bình |
-| Thẻ image động (`mysql:9`, `redis:latest`, `ofelia:latest`) | Rebuild không tái lập được, nâng cấp đến mà không báo trước | Trung bình |
+| Thẻ image động (`mysql:9`, `redis:latest`) | Rebuild không tái lập được, nâng cấp đến mà không báo trước | Trung bình |
 | Không quét hay ký image | Image nền có lỗ hổng mà không biết | Trung bình |
 | Không bắt buộc 2FA hay SSO | Chỉ mật khẩu, không có định danh tập trung | Trung bình |
 | CSP vẫn cần `'unsafe-inline'` và `'unsafe-eval'` | Moodle in script nội tuyến và TinyMCE gọi `new Function`, nên script chèn trong trang không bị chặn | Trung bình |
 | CSP chỉ cho phép YouTube | Vimeo, Google Drive và ảnh ngoài trong nội dung khóa học bị chặn có chủ đích | Thấp |
 | Không antivirus cho tệp tải lên | Tệp độc hại được lưu và phục vụ | Thấp |
 | Log chỉ nằm trên đĩa cục bộ | Kẻ xâm nhập có thể xóa dấu vết | Thấp |
+
+Chỉ CetusGuard giữ `/var/run/docker.sock`, và allowlist của nó không cho gì
+ngoài exec trên `moodle_web` và `moodle_db` (Sửa 4). Scheduler không thấy
+socket, không tạo, khởi động hay xóa container, và không đọc được biến môi
+trường của container khác.
 
 ## Vận hành
 
@@ -236,3 +241,55 @@ rclone lsl remote:moodle/restic | tail -3
 **Đánh đổi.** Lưu trữ remote tốn phí và thông tin đăng nhập rclone nằm trên host
 (đặt trong tệp quyền `600`). Phục hồi từ remote phải tải về trước, làm tăng RTO.
 Nên diễn tập phục hồi sau tháng đầu tiên.
+
+## Sửa 4: lọc Docker API bằng CetusGuard (đã áp dụng)
+
+**Trạng thái.** Áp dụng ngày 16-11-2026. Ofelia không còn mount socket.
+`socket-proxy` giữ socket và chỉ cho bốn route exec. Đo trên hệ thống đang chạy:
+`containers/create`, `containers/start`, `containers/delete` và
+`containers/json` trả `403`; tạo exec trên `moodle_web` và `moodle_db` trả
+`201`; cron mỗi phút chạy xong qua proxy.
+
+**Trước đây.** `cron` mount `/var/run/docker.sock:ro`. `:ro` chỉ ngăn ghi vào tệp
+socket; request đến được daemon vẫn chạy với quyền của daemon, nên Ofelia bị
+chiếm có thể tạo container privileged mount `/` và lấy host. Chế độ nhãn còn
+khiến Ofelia liệt kê và inspect mọi container, lộ toàn bộ biến môi trường.
+
+**Thay đổi.** Ba tệp:
+
+```text
+docker-compose.yml   thêm socket-proxy (CetusGuard), thêm socket_net nội bộ,
+                     chuyển Ofelia sang chế độ tệp, bỏ nhãn khỏi db và moodle
+ofelia/config.ini    bốn job
+ofelia/rules.list    allowlist: exec create/start/inspect trên hai container
+```
+
+Chỉ proxy giữ socket. Bề mặt API của nó là exec trên hai container; mọi thứ
+khác bị chặn trước khi tới daemon. Proxy ghim `hectorm/cetusguard:v1.2.0`, Ofelia
+ghim `mcuadros/ofelia:0.3.22`.
+
+**Kiểm tra.**
+
+```bash
+docker compose ps
+docker logs moodle_socket_proxy 2>&1 | tail -n 10
+docker logs moodle_cron_scheduler 2>&1 | grep 'New job registered'
+docker exec moodle_cron_scheduler date
+```
+
+Cả sáu container phải `Up`, bốn job phải được đăng ký, và ngày phải hiện `+07`.
+Bài test rule trong
+[NOTES.vi.md](NOTES.vi.md#scheduler-và-quyền-docker-api) phải trả `403` cho
+`containers/create`.
+
+**Rủi ro còn lại.** Ofelia bị chiếm vẫn chạy được lệnh root trong `moodle_web`
+và `moodle_db`, vì exec chính là thứ scheduler cần. Nó đọc được `config.php`,
+mật khẩu cơ sở dữ liệu và `RESTIC_PASSWORD`, sửa website hoặc cơ sở dữ liệu, và
+xóa bản backup cục bộ. Nó không tạo, khởi động, dừng hay xóa container, không
+đọc image/volume/network, không chạm filesystem host. Muốn bỏ nốt rủi ro này thì
+phải bỏ scheduler, không phải siết proxy thêm.
+
+**Đánh đổi.** Thêm một container và một mạng phải nhớ. Proxy chết thì không job
+nào chạy, nhưng cron Moodle chạy mỗi phút nên lỗi lộ ra nhanh. Tên container
+giờ xuất hiện ở ba nơi (`docker-compose.yml`, `ofelia/config.ini`,
+`ofelia/rules.list`).

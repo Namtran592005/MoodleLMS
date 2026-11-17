@@ -455,9 +455,83 @@ không mở được kho, nên phải giữ một bản ngoài máy chủ. Khi m
 khác, đặt `RESTIC_REPOSITORY` trong `.env` thành đích `s3:`, `rclone:` hoặc
 `sftp:` rồi chạy `restic init` ở đó một lần.
 
+### Scheduler và quyền Docker API
+
+Ofelia chạy bằng tệp cấu hình, không dùng nhãn container:
+
+```text
+ofelia/config.ini   job và lịch
+ofelia/rules.list   allowlist của CetusGuard
+command: daemon --config=/etc/ofelia/config.ini
+```
+
+Nhãn đã được bỏ khỏi `db` và `moodle`. Chế độ nhãn cần `GET /containers/json`,
+`GET /containers/{id}/json` và luồng sự kiện, tức là lộ biến môi trường của mọi
+container trên host, kể cả `MYSQL_ROOT_PASSWORD` và `RESTIC_PASSWORD`. Chế độ
+tệp chỉ cần `GET /_ping`, `GET /info` và các lệnh exec mà bốn job thực sự gọi.
+
+Chỉ `socket-proxy` mount `/var/run/docker.sock` ở dạng chỉ đọc. Ofelia gọi
+`tcp://socket-proxy:2375` qua `socket_net`, mạng bridge đặt `internal: true`:
+không mở cổng, không có đường ra ngoài Docker, và chỉ hai service này tham gia.
+`/_ping`, `/version`, `/info` do rule dựng sẵn của CetusGuard cho phép; phần còn
+lại nằm trong `ofelia/rules.list`:
+
+```text
+POST %API_PREFIX%/containers/moodle_web/exec
+POST %API_PREFIX%/containers/moodle_db/exec
+POST %API_PREFIX%/exec/%CONTAINER_ID%/start
+GET  %API_PREFIX%/exec/%CONTAINER_ID%/json
+```
+
+`POST /exec/{id}/start` nâng kết nối lên HTTP 101 để đọc output; CetusGuard xử
+lý hijack. Đổi tên container trong `docker-compose.yml` thì phải đổi ở cả
+`ofelia/config.ini` và `ofelia/rules.list`.
+
+Những gì proxy từ chối, đo trên hệ thống đang chạy:
+
+| Request | Kết quả |
+|---|---|
+| `GET /v1.51/info` | 200 |
+| `GET /v1.51/containers/json` | 403 |
+| `POST /v1.51/containers/create` | 403 |
+| `POST /v1.51/containers/moodle_web/start` | 403 |
+| `DELETE /v1.51/containers/moodle_web` | 403 |
+| `POST /v1.51/containers/moodle_redis/exec` | 403 |
+| `POST /v1.51/containers/moodle_web/exec` | 201 |
+| `POST /v1.51/containers/moodle_db/exec` | 201 |
+
+403 ở `containers/create` là điểm quan trọng nhất: với cấu hình proxy phổ biến
+`CONTAINERS=1` + `POST=1`, lệnh đó được phép, và một container privileged mount
+`/` biến quyền API thành root host.
+
+**Rủi ro còn lại.** Ofelia vẫn quyết định *chạy gì* bên trong `moodle_web` và
+`moodle_db`. Scheduler bị chiếm vẫn chạy được lệnh root trong hai container đó,
+đọc `config.php`, `MYSQL_ROOT_PASSWORD`, `RESTIC_PASSWORD`, sửa website hoặc cơ
+sở dữ liệu, xóa bản dump và kho restic. Nó không tạo, khởi động, dừng hay xóa
+container, không đọc image/volume/network, không chạm được filesystem host. Muốn
+bỏ nốt rủi ro này thì phải bỏ scheduler, không phải siết proxy thêm.
+
+Hai lưu ý vận hành:
+
+- CetusGuard dùng image `scratch`, không có zoneinfo, nên log của chính nó theo
+  UTC. Job vẫn do Ofelia lập lịch theo `Asia/Ho_Chi_Minh`.
+- `socket_net` là ranh giới tin cậy. Không gắn container khác vào; container ở
+  đó dùng được cùng allowlist.
+
+Test tay một rule bằng client tạm nối vào `socket_net`:
+
+```bash
+docker run --rm --network moodle-server_socket_net curlimages/curl:8.11.1 \
+  -s -o /dev/null -w '%{http_code}\n' \
+  -X POST -H 'Content-Type: application/json' -d '{}' \
+  http://socket-proxy:2375/v1.51/containers/create
+```
+
+Kết quả phải là `403`.
+
 ### Định dạng lịch của Ofelia
 
-Ofelia 0.3.x, bản đứng sau tag `latest`, vẫn bắt buộc trường giây ở đầu:
+Ofelia 0.3.x, ghim ở `mcuadros/ofelia:0.3.22`, vẫn bắt buộc trường giây ở đầu:
 `0 0 3 * * *` là 03:00:00, còn `0 3 * * *` là mỗi giờ vào phút 3. Dạng năm
 trường trông hợp lệ và không báo lỗi, nên một job hằng ngày âm thầm thành mỗi
 giờ một lần.
@@ -602,13 +676,32 @@ Moodle còn giới hạn riêng trong **Site administration → Security → Sit
 policies**. Lỗi 413 từ Caddy hoặc thất bại im lặng thường là request vượt
 `post_max_size`.
 
+### Scheduler không gọi được proxy
+
+Ofelia đọc `ofelia/config.ini` một lần lúc khởi động, nên sửa xong phải khởi
+động lại:
+
+```bash
+docker compose up -d --force-recreate socket-proxy cron
+docker logs moodle_cron_scheduler 2>&1 | tail -n 20
+docker logs moodle_socket_proxy 2>&1 | tail -n 20
+```
+
+`connection refused` là proxy chưa chạy hoặc không ở trên `socket_net`. Lỗi `403`
+ở một job nghĩa là tên container trong `ofelia/config.ini` không khớp với
+`ofelia/rules.list`, hoặc tệp rule đã sửa mà chưa tạo lại proxy. CetusGuard in
+`forbidden` kèm method và path ở mức log 6; nâng `CETUSGUARD_LOG_LEVEL` lên `7`
+để thấy đầy đủ dòng request.
+
 ### Sai múi giờ
 
 `TZ` trong `.env` mặc định `Asia/Ho_Chi_Minh` và compose truyền cho mọi
 container, nên Apache, PHP, MySQL, Redis, Caddy và Ofelia ghi mốc thời gian theo
-giờ Việt Nam. Moodle có thiết lập riêng trong **Site administration → Location →
-Location settings**; giữ cùng múi giờ. Nếu đổi `TZ`, đổi cả thiết lập của Moodle,
-nếu không giao diện và log sẽ lệch nhau.
+giờ Việt Nam. CetusGuard là ngoại lệ: image `scratch` không có zoneinfo nên log
+của chính nó theo UTC; job mà nó chuyển tiếp vẫn theo múi giờ của Ofelia. Moodle
+có thiết lập riêng trong **Site administration → Location → Location settings**;
+giữ cùng múi giờ. Nếu đổi `TZ`, đổi cả thiết lập của Moodle, nếu không giao diện
+và log sẽ lệch nhau.
 
 ## Giới hạn đã biết
 

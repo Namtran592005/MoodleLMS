@@ -91,10 +91,6 @@ services:
       - ./logs/mysql:/var/log/mysql
     networks:
       - moodle_net
-    labels:
-      - "ofelia.enabled=true"
-      - "ofelia.job-exec.db-backup.schedule=0 0 0 * * *"
-      - "ofelia.job-exec.db-backup.command=nice -n 19 sh /scripts/db-job.sh"
 
   redis:
     image: redis:latest
@@ -187,24 +183,50 @@ services:
         condition: service_healthy
     networks:
       - moodle_net
-    labels:
-      - "ofelia.enabled=true"
-      - "ofelia.job-exec.moodle-cron.schedule=@every 1m"
-      - "ofelia.job-exec.moodle-cron.command=setpriv --reuid www-data --regid www-data --init-groups php /var/www/html/admin/cli/cron.php --keep-alive=0"
-      - "ofelia.job-exec.logs-rotate.schedule=0 0 0 * * *"
-      - "ofelia.job-exec.logs-rotate.command=sh /usr/local/bin/log-rotate.sh"
-      - "ofelia.job-exec.restic-backup.schedule=0 0 0 * * *"
-      - "ofelia.job-exec.restic-backup.command=nice -n 19 sh /scripts/restic-job.sh"
+
+  socket-proxy:
+    image: hectorm/cetusguard:v1.2.0
+    container_name: moodle_socket_proxy
+    restart: always
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    memswap_limit: 64m
+    pids_limit: 64
+    logging: *default-logging
+    environment:
+      CETUSGUARD_BACKEND_ADDR: unix:///var/run/docker.sock
+      CETUSGUARD_FRONTEND_ADDR: tcp://0.0.0.0:2375
+      CETUSGUARD_RULES_FILE: /rules.list
+      CETUSGUARD_LOG_LEVEL: "6"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia/rules.list:/rules.list:ro
+    networks:
+      - socket_net
 
   cron:
-    image: mcuadros/ofelia:latest
+    image: mcuadros/ofelia:0.3.22
     container_name: moodle_cron_scheduler
     restart: always
     mem_limit: 256m
     memswap_limit: 256m
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
     logging: *default-logging
+    tmpfs:
+      - /tmp
     environment:
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      DOCKER_HOST: tcp://socket-proxy:2375
     healthcheck:
       test: ["CMD-SHELL", "pidof ofelia >/dev/null"]
       interval: 30s
@@ -212,13 +234,15 @@ services:
       retries: 3
       start_period: 10s
     depends_on:
+      socket-proxy:
+        condition: service_started
       moodle:
         condition: service_healthy
-    command: daemon --docker
+    command: daemon --config=/etc/ofelia/config.ini
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia/config.ini:/etc/ofelia/config.ini:ro
     networks:
-      - moodle_net
+      - socket_net
 
 volumes:
   moodle_db_data:
@@ -229,3 +253,6 @@ volumes:
 networks:
   moodle_net:
     driver: bridge
+  socket_net:
+    driver: bridge
+    internal: true

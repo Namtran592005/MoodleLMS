@@ -23,10 +23,12 @@ Sizing, tuning and fixes for problems seen in operation are in
 | `db` | `mysql:9` | MySQL 9.7 LTS, `utf8mb4` | internal 3306 |
 | `redis` | `redis:latest` | Cache and sessions, 256 MB limit | internal 6379 |
 | `moodle` | build `./php` | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | internal 80 |
-| `cron` | `mcuadros/ofelia` | Moodle cron, database dump, restic backup, log rotation | not exposed |
+| `socket-proxy` | `hectorm/cetusguard:v1.2.0` | Filters the Docker API down to exec calls on two containers | internal 2375 |
+| `cron` | `mcuadros/ofelia:0.3.22` | Moodle cron, database dump, restic backup, log rotation | not exposed |
 
-Only `caddy` publishes ports; the other services are reachable only inside
-`moodle_net`.
+Only `caddy` publishes ports. `db`, `redis` and `moodle` are reachable only on
+`moodle_net`; `cron` and `socket-proxy` share the separate internal `socket_net`
+network, which has no outside route.
 
 ## Architecture
 
@@ -115,14 +117,15 @@ replace it with the default file. Restoring it is described in
 ### 3. Pull images and start
 
 ```bash
-docker compose pull db redis cron
+docker compose pull db redis socket-proxy cron
 docker compose up -d --build
 ```
 
-Three base images (`mysql:9`, `redis:latest`, `mcuadros/ofelia:latest`) are
-pulled; `moodle` and `caddy` are built from `./php` and `./caddy`. The first run
-takes 2 to 10 minutes because it initializes MySQL, builds images, runs
-`composer install` and registers the Ofelia jobs.
+Four base images (`mysql:9`, `redis:latest`,
+`hectorm/cetusguard:v1.2.0`, `mcuadros/ofelia:0.3.22`) are pulled; `moodle` and
+`caddy` are built from `./php` and `./caddy`. The first run takes 2 to 10 minutes
+because it initializes MySQL, builds images, runs `composer install` and
+registers the Ofelia jobs.
 
 ### 4. Install Moodle
 
@@ -236,6 +239,13 @@ Ofelia runs `admin/cli/cron.php` every minute as the deployment account's UID,
 with `--keep-alive=0`, so each run exits as soon as it finishes its tasks. The
 `cron` service is limited to 256 MB and restarts automatically if it exceeds
 that. Every job uses the `TZ` value from `.env`, `Asia/Ho_Chi_Minh` by default.
+
+Ofelia no longer mounts the Docker socket. It sends its API calls to
+`socket-proxy` (CetusGuard) over the private `socket_net`, and the proxy only
+allows exec calls inside `moodle_web` and `moodle_db`. Creating, starting or
+deleting containers is rejected with `403`, so a compromised scheduler cannot
+reach the host. The remaining risk and the exact allowlist are in
+[NOTES.md](NOTES.md#scheduler-and-docker-api-access).
 
 ### Logs
 

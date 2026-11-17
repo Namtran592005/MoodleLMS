@@ -464,9 +464,85 @@ repository cannot be decrypted, so keep a copy outside the server. To move the
 repository later, set `RESTIC_REPOSITORY` in `.env` to an `s3:`, `rclone:` or
 `sftp:` target and run `restic init` there once.
 
+### Scheduler and Docker API access
+
+Ofelia runs from a file, not from container labels:
+
+```text
+ofelia/config.ini   jobs and schedules
+ofelia/rules.list   CetusGuard allowlist
+command: daemon --config=/etc/ofelia/config.ini
+```
+
+Labels were removed from `db` and `moodle`. Label mode needs
+`GET /containers/json`, `GET /containers/{id}/json` and the event stream, which
+would expose the environment of every container on the host, including
+`MYSQL_ROOT_PASSWORD` and `RESTIC_PASSWORD`. File mode needs only `GET /_ping`,
+`GET /info` and the exec calls the four jobs actually make.
+
+Only `socket-proxy` mounts `/var/run/docker.sock`, read-only. Ofelia reaches it
+at `tcp://socket-proxy:2375` over `socket_net`, a bridge network marked
+`internal: true`: no published port, no route outside Docker, and only these two
+services are attached. `/_ping`, `/version` and `/info` come from the built-in
+CetusGuard rules; everything else is in `ofelia/rules.list`:
+
+```text
+POST %API_PREFIX%/containers/moodle_web/exec
+POST %API_PREFIX%/containers/moodle_db/exec
+POST %API_PREFIX%/exec/%CONTAINER_ID%/start
+GET  %API_PREFIX%/exec/%CONTAINER_ID%/json
+```
+
+`POST /exec/{id}/start` upgrades the connection to HTTP 101 to stream output;
+CetusGuard handles the hijack. Change a container name in `docker-compose.yml`
+and you must change it in both `ofelia/config.ini` and `ofelia/rules.list`.
+
+What the proxy rejects, measured against the running stack:
+
+| Request | Result |
+|---|---|
+| `GET /v1.51/info` | 200 |
+| `GET /v1.51/containers/json` | 403 |
+| `POST /v1.51/containers/create` | 403 |
+| `POST /v1.51/containers/moodle_web/start` | 403 |
+| `DELETE /v1.51/containers/moodle_web` | 403 |
+| `POST /v1.51/containers/moodle_redis/exec` | 403 |
+| `POST /v1.51/containers/moodle_web/exec` | 201 |
+| `POST /v1.51/containers/moodle_db/exec` | 201 |
+
+The 403 on `containers/create` is the important one: with the common proxy
+setting `CONTAINERS=1` plus `POST=1`, that call is allowed, and a privileged
+container mounting `/` turns API access back into host root.
+
+**Remaining risk.** Ofelia still decides *what* runs inside `moodle_web` and
+`moodle_db`. A compromised scheduler can run commands as root there, read
+`config.php`, `MYSQL_ROOT_PASSWORD` and `RESTIC_PASSWORD`, change the website or
+the database, and delete the dumps and the restic repository. It cannot create,
+start, stop or delete containers, read images, volumes or networks, or reach the
+host filesystem. Removing the last risk means removing the scheduler, not
+tightening the proxy further.
+
+Two operational notes:
+
+- CetusGuard runs on a `scratch` image without zoneinfo, so its own log lines
+  are in UTC. Each exec job is still scheduled by Ofelia in `Asia/Ho_Chi_Minh`.
+- `socket_net` is a trust boundary. Do not attach other containers to it; any
+  container there can use the same allowlist.
+
+To test a single rule by hand, attach a temporary client to `socket_net`:
+
+```bash
+docker run --rm --network moodle-server_socket_net curlimages/curl:8.11.1 \
+  -s -o /dev/null -w '%{http_code}\n' \
+  -X POST -H 'Content-Type: application/json' -d '{}' \
+  http://socket-proxy:2375/v1.51/containers/create
+```
+
+The answer must be `403`.
+
 ### Ofelia schedule format
 
-Ofelia 0.3.x, the version behind the `latest` tag, still requires the seconds
+Ofelia 0.3.x, pinned here to `mcuadros/ofelia:0.3.22`, still requires the seconds
 field first: `0 0 3 * * *` means 03:00:00, while `0 3 * * *` means every hour at
 minute 3. The five-field form looks valid and produces no error, so a daily job
 silently turns hourly.
@@ -612,12 +688,30 @@ Moodle also has site limits under **Site administration → Security → Site
 policies**. A 413 from Caddy or a silent failure usually means the request
 exceeded `post_max_size`.
 
+### Scheduler cannot reach the proxy
+
+Ofelia reads `ofelia/config.ini` once at startup, so a change needs a restart:
+
+```bash
+docker compose up -d --force-recreate socket-proxy cron
+docker logs moodle_cron_scheduler 2>&1 | tail -n 20
+docker logs moodle_socket_proxy 2>&1 | tail -n 20
+```
+
+`connection refused` means the proxy is down or not on `socket_net`. A `403` on a
+job means the container name in `ofelia/config.ini` does not match the one in
+`ofelia/rules.list`, or the rule file was edited without recreating the proxy.
+CetusGuard prints `forbidden` with the method and path at log level 6; raise
+`CETUSGUARD_LOG_LEVEL` to `7` for the full request line.
+
 ### Wrong time zone
 
 `TZ` in `.env` defaults to `Asia/Ho_Chi_Minh` and compose passes it to every
 container, so Apache, PHP, MySQL, Redis, Caddy and Ofelia write timestamps in
-Vietnam time. Moodle has its own setting under **Site administration → Location
-→ Location settings**; keep it on the same zone. If you change `TZ`, update the
+Vietnam time. CetusGuard is the exception: its `scratch` image has no zoneinfo,
+so its own log lines stay in UTC; the jobs it proxies still follow Ofelia's
+timezone. Moodle has its own setting under **Site administration → Location →
+Location settings**; keep it on the same zone. If you change `TZ`, update the
 Moodle setting too, or the UI and the logs will disagree.
 
 ## Known limitations
