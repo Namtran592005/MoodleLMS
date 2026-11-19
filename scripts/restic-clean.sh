@@ -48,10 +48,10 @@ docker exec moodle_web sh -c 'test -n "$RESTIC_PASSWORD"' \
 echo "Snapshot hien co:"
 docker exec moodle_web restic snapshots
 
-FORGET="restic forget --host moodle --tag files --keep-last 0 --prune --unsafe-allow-remove-all"
+FORGET="restic forget --host moodle --group-by host --keep-last 0 --prune --unsafe-allow-remove-all"
 if [ "$DRY" -eq 1 ]; then
   echo
-  echo "Dry-run: se xoa toan bo snapshot cua host moodle, tag files."
+  echo "Dry-run: se xoa toan bo snapshot cua host moodle (ca DB va tep)."
   docker exec moodle_web sh -c "$FORGET --dry-run"
   exit 0
 fi

@@ -263,7 +263,8 @@ docker compose up -d --no-build
 
 Or use `sh scripts/images-save.sh` and `sh scripts/images-load.sh`. The archive
 holds only Docker images, not `moodle/`, `moodledata/`, `.env` or MySQL data;
-copy those and `backup/moodle_latest.sql` separately. Image names are fixed as
+copy those separately. The database lives in the `moodle_db_data` volume, and
+`backup/restic` contains a recent dump of it. Image names are fixed as
 `moodle-server-moodle:5.3`, `moodle-caddy:2.11` and `moodle-cetusguard:v1`,
 so the directory can have any name.
 
@@ -306,70 +307,54 @@ Expected results after the change:
 | `/theme/boost/style/moodle.css` | 200 |
 | `/login/index.php` | 200 |
 
-### Database dumps
+### Restic backup of files and database
 
-`scripts/db-job.sh` runs inside `moodle_db`; Ofelia calls it at 00:00
-(`Asia/Ho_Chi_Minh`). Each run writes `backup/moodle_<time>.sql` with a
-second-precision name, refreshes `moodle_latest.sql` through a temporary file,
-then deletes dated dumps older than 7 days:
+Two kinds of data must stay in step: rows in MySQL and files under
+`moodledata`. A single nightly job captures both in one restic snapshot, so
+there is one retention policy and one thing to verify. Ofelia runs
+`nice -n 19 sh /scripts/restic-job.sh` in `moodle_web` at 00:00
+(`Asia/Ho_Chi_Minh`).
 
-```sh
-find /backup -maxdepth 1 -type f -name 'moodle_*.sql' \
-  ! -name 'moodle_latest.sql' -mtime +6 -delete
-```
+In order, the job:
 
-`-mtime +6` keeps today plus the previous six days. The prune runs after a
-successful dump, and `set -e` stops the script if `mysqldump` fails, so a failed
-run never removes the last good file.
+1. Initialises `backup/restic` if the repository does not exist yet.
+2. Dumps the Moodle database to `/backup/dbdump/moodle.sql` with
+   `mysqldump --single-transaction --quick --skip-lock-tables`, connecting to
+   `db` as the Moodle account. The PHP image installs `default-mysql-client`
+   for this, and the dump is created with mode `600`.
+3. Aborts if the dump is empty or has no `CREATE TABLE`, before touching the
+   repository, so the previous snapshot stays valid.
+4. Runs `restic backup /var/www/moodledata /backup/dbdump` with host `moodle`
+   and tag `full`, excluding `cache`, `localcache`, `temp`, `sessions`, `muc`,
+   `environment`, `antivirus_quarantine` and `trashdir`. All are regenerated or
+   disposable.
+5. Deletes the plain SQL file as soon as restic finishes, so `backup/` never
+   keeps an unencrypted copy.
+6. Runs `restic forget --host moodle --group-by host --keep-daily 7 --prune`,
+   so only the last 7 days remain.
 
-The database container runs as `root`, so the job chowns the new files to the
-owner of `/backup`. Without that, the host account could read a dump but not
-overwrite `moodle_latest.sql` on the next manual run. New dumps are mode `600`
-because they contain user data. Manual backups from the host go through the same
-job:
+`--single-transaction` gives a consistent InnoDB view of the database while
+the site keeps running. The files are read a few seconds later, so a file
+uploaded between the two steps can be newer than the row that points to it; an
+extra file is harmless. A file deleted in that gap is the only small
+inconsistency to accept.
 
-```bash
-bash scripts/db-backup.sh
-```
+Why not copy the MySQL volume with restic directly? InnoDB spreads data across
+the tablespace, redo log and undo log; copying those files while the server
+runs can produce a corrupt set. The dump is the supported way to get a
+point-in-time copy.
 
-The server runs with GTID enabled, so the job passes `--set-gtid-purged=OFF`.
-A dump that keeps the `GTID_PURGED` statement cannot be imported into the same
-server: MySQL fails with error 3546 because the set overlaps
-`GTID_EXECUTED`. `scripts/db-restore.sh` also strips that line, so dumps made
-before this change still restore.
+Because `filedir` names files by content hash, unchanged files are never stored
+twice. A 22 MB dump compresses well, so after the first snapshot each run adds
+mostly the database changes. The job uses the MariaDB client that Debian ships
+against MySQL 9.7; the dump restores into the same server with all 499 tables
+and the same `mdl_config.version`.
 
-A dump is a plain SQL file of about 22 MB, so 7 days is roughly 154 MB. To
-delete every dump, including `moodle_latest.sql`:
-
-```bash
-bash scripts/db-clean.sh --dry-run
-bash scripts/db-clean.sh
-```
-
-The script lists the files and the total size, then asks for `XOA`. It never
-touches `backup/restic` or `moodledata/`.
-
-### Restic file backup
-
-`moodledata` holds the real user content: submissions, images, SCORM packages.
-`filedir` is immutable — the file name is the content hash — so a full archive
-every day copies the same bytes repeatedly. Restic keeps one copy of each block,
-which is why the second run of unchanged data adds hundreds of bytes.
-
-What the job does, in `scripts/restic-job.sh` (Ofelia calls it through
-`docker exec`):
-
-1. Initialise `backup/restic` if the repository does not exist yet.
-2. Run `restic backup /var/www/moodledata` with host `moodle` and tag `files`.
-3. Exclude `cache`, `localcache`, `temp`, `sessions`, `muc`, `environment`,
-   `antivirus_quarantine` and `trashdir`. All are regenerated or disposable.
-4. Run `restic forget --keep-daily 7 --prune`, so only the last 7 days remain.
-
-The cleanup runs after the backup, and `set -e` stops the script if the backup
-fails, so a bad run never deletes the last good snapshot. Restic also keeps the
-oldest snapshot while there are fewer than 7 days in the repository; after a
-week the count settles at exactly 7. Today the repository is about 22 MB for
-50 MB of data. Offsite copies are the remaining task in
+The cleanup runs after the backup, and `set -e` stops the script if the dump or
+backup fails, so a bad run never deletes the last good snapshot. Restic also
+keeps the oldest snapshot while there are fewer than 7 days in the repository;
+after a week the count settles at exactly 7. Offsite copies are the remaining
+task in
 [LIMITATIONS.md](LIMITATIONS.md#fix-3-prune-and-copy-backups-off-the-server).
 
 Run a backup by hand from the host, which is the same flow Ofelia uses:
@@ -377,23 +362,26 @@ Run a backup by hand from the host, which is the same flow Ofelia uses:
 ```bash
 bash scripts/restic-backup.sh                 # backup now, then show 3 snapshots and repo size
 docker exec moodle_web restic snapshots
+docker exec moodle_web restic ls latest /backup/dbdump
 docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
 ```
 
 `scripts/restic-backup.sh` checks that `moodle_web` is running and then calls
-`sh /scripts/restic-job.sh` inside the container, where restic, `/backup/restic`
-and `/var/www/moodledata` exist. The wrapper exists so manual runs need no long
-`docker exec` line and so the schedule and manual runs share one code path.
+`sh /scripts/restic-job.sh` inside the container, where restic, `mysqldump`,
+`/backup/restic` and `/var/www/moodledata` exist. The wrapper exists so manual
+runs need no long `docker exec` line and so the schedule and manual runs share
+one code path.
 
 ### Cleaning the restic repository
 
 `scripts/restic-clean.sh` removes backup history on purpose; it is not part of
 normal operation. The default mode runs
 `restic forget --keep-last 0 --prune --unsafe-allow-remove-all`, which deletes
-every snapshot tagged `files` for host `moodle` but keeps the repository and the
-password in `.env`. `--repo` deletes `backup/restic` itself, so the next backup
-initialises a fresh repository. `--dry-run` prints what would be removed.
+every snapshot for host `moodle` — database dump and files — but keeps the
+repository and the password in `.env`. `--repo` deletes `backup/restic` itself,
+so the next backup initialises a fresh repository. `--dry-run` prints what would
+be removed.
 
 ```bash
 bash scripts/restic-clean.sh --dry-run        # see the snapshots that would go
@@ -413,33 +401,52 @@ repository grows. If it ever fails on a full disk, the snapshots stay intact;
 free space and run it again:
 
 ```bash
-docker exec moodle_web restic forget --host moodle --tag files --keep-daily 7 --prune
+docker exec moodle_web restic forget --host moodle --group-by host --keep-daily 7 --prune
 ```
 
-### Restoring files
+### Restoring the database and files
 
-`scripts/restic-restore.sh` runs on the host and has two modes.
+`scripts/restic-restore.sh` runs on the host and restores both halves by
+default. `--db` restores only the database dump, `--files` restores only
+`moodledata`, and the two flags can be combined.
 
 Staging is the default: it restores into `backup/restore_<time>`, changes the
-owner so the deployment account can read the files, and prints the file count of
-the snapshot next to the current count. Nothing under `moodledata/` is touched.
+owner so the deployment account can read the files, and prints the file count
+of the snapshot next to the current count. For the database it prints the path
+of the dump and the import command. Nothing under `moodledata/` or the running
+database is touched.
 
 ```bash
-docker exec moodle_web restic snapshots     # find the ID you want
-bash scripts/restic-restore.sh              # newest snapshot
-bash scripts/restic-restore.sh 9711dea3     # a specific snapshot
+docker exec moodle_web restic snapshots          # find the ID you want
+bash scripts/restic-restore.sh                   # newest snapshot, DB + files
+bash scripts/restic-restore.sh --db              # database dump only
+bash scripts/restic-restore.sh --files           # moodledata only
+bash scripts/restic-restore.sh 9711dea3 --db     # a specific snapshot, DB only
 ```
+
+The dump lands at `backup/restore_<time>/backup/dbdump/moodle.sql`. It is a
+plain SQL file, so delete the staging directory after the drill or restore.
 
 In-place is the real recovery: it asks for confirmation, stops `moodle` and
-`cron`, copies the files over `moodledata/`, warns if any file is not owned by
-the deployment account, starts the services again, waits for the health check
-and purges caches.
+`cron`, imports the dump and/or copies the files, starts the services again,
+waits for the health check and purges caches.
 
 ```bash
-bash scripts/restic-restore.sh --in-place
-bash scripts/db-restore.sh backup/moodle_latest.sql
-docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
+bash scripts/restic-restore.sh --db --in-place     # database only
+bash scripts/restic-restore.sh --files --in-place  # files only
+bash scripts/restic-restore.sh --in-place          # both
 ```
+
+The database import uses the `root` account inside `moodle_db`, so it works even
+when the target database or its grants differ from what the Moodle account can
+see. The dump contains `DROP TABLE IF EXISTS` for every table it captured, so
+each restored table is replaced; tables that exist only in the live database are
+left alone, which Moodle ignores. The script also strips a leftover
+`SET @@GLOBAL.GTID_PURGED` line before importing, so older dumps still load.
+
+`--db` is why `moodle_db` no longer mounts `/backup` or `./scripts`, and why
+Ofelia no longer has exec permission on that container: the import runs from
+the host over stdin.
 
 The staging copy is kept on purpose, so delete `backup/restore_<time>` only
 after the site looks right. Restoring copies files from the snapshot but does
@@ -478,7 +485,7 @@ Labels were removed from `db` and `moodle`. Label mode needs
 `GET /containers/json`, `GET /containers/{id}/json` and the event stream, which
 would expose the environment of every container on the host, including
 `MYSQL_ROOT_PASSWORD` and `RESTIC_PASSWORD`. File mode needs only `GET /_ping`,
-`GET /info` and the exec calls the four jobs actually make.
+`GET /info` and the exec calls the three jobs actually make.
 
 Only `socket-proxy` mounts `/var/run/docker.sock`, read-only. Ofelia reaches it
 at `tcp://socket-proxy:2375` over `socket_net`, a bridge network marked
@@ -497,7 +504,6 @@ everything else is in `ofelia/rules.list`:
 
 ```text
 POST %API_PREFIX%/containers/moodle_web/exec
-POST %API_PREFIX%/containers/moodle_db/exec
 POST %API_PREFIX%/exec/%CONTAINER_ID%/start
 GET  %API_PREFIX%/exec/%CONTAINER_ID%/json
 ```
@@ -517,19 +523,20 @@ What the proxy rejects, measured against the running stack:
 | `DELETE /v1.51/containers/moodle_web` | 403 |
 | `POST /v1.51/containers/moodle_redis/exec` | 403 |
 | `POST /v1.51/containers/moodle_web/exec` | 201 |
-| `POST /v1.51/containers/moodle_db/exec` | 201 |
+| `POST /v1.51/containers/moodle_db/exec` | 403 |
 
 The 403 on `containers/create` is the important one: with the common proxy
 setting `CONTAINERS=1` plus `POST=1`, that call is allowed, and a privileged
 container mounting `/` turns API access back into host root.
 
-**Remaining risk.** Ofelia still decides *what* runs inside `moodle_web` and
-`moodle_db`. A compromised scheduler can run commands as root there, read
-`config.php`, `MYSQL_ROOT_PASSWORD` and `RESTIC_PASSWORD`, change the website or
-the database, and delete the dumps and the restic repository. It cannot create,
-start, stop or delete containers, read images, volumes or networks, or reach the
-host filesystem. Removing the last risk means removing the scheduler, not
-tightening the proxy further.
+**Remaining risk.** Ofelia still decides *what* runs inside `moodle_web`. A
+compromised scheduler can run commands as root there, read `config.php`,
+`MYSQL_ROOT_PASSWORD` and `RESTIC_PASSWORD`, change the website, and delete the
+restic repository. The database credentials also allow it to change data over
+the internal network, even though the proxy no longer grants exec on
+`moodle_db`. It cannot create, start, stop or delete containers, read images,
+volumes or networks, or reach the host filesystem. Removing the last risk means
+removing the scheduler, not tightening the proxy further.
 
 Two operational notes:
 

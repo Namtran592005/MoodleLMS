@@ -24,8 +24,8 @@ Phần tính toán RAM, tinh chỉnh và cách xử lý lỗi nằm trong
 | `db` | `mysql:9.7` | MySQL 9.7 LTS, `utf8mb4` | nội bộ 3306 |
 | `redis` | `redis:8.10` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
 | `moodle` | build `./php` (`moodle-server-moodle:5.3`) | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | nội bộ 80 |
-| `socket-proxy` | build `./cetusguard` (`moodle-cetusguard:v1`) | Lọc Docker API, chỉ cho exec vào hai container | nội bộ 2375 |
-| `cron` | `mcuadros/ofelia:0.3` | Cron Moodle, dump DB, backup restic, xoay log | không mở |
+| `socket-proxy` | build `./cetusguard` (`moodle-cetusguard:v1`) | Lọc Docker API, chỉ cho exec vào container Moodle | nội bộ 2375 |
+| `cron` | `mcuadros/ofelia:0.3` | Cron Moodle, backup restic (cơ sở dữ liệu và tệp), xoay log | không mở |
 
 Chỉ `caddy` mở cổng ra ngoài. `db`, `redis` và `moodle` chỉ truy cập được trong
 `moodle_net`; `cron` và `socket-proxy` dùng chung mạng nội bộ riêng `socket_net`,
@@ -43,7 +43,7 @@ Dữ liệu được phân bố như sau:
 |---|---|---|
 | `moodle/` | Mã nguồn Moodle | Bind mount |
 | `moodledata/` | Tệp người dùng, cache, session | Bind mount |
-| `backup/` | Bản dump cơ sở dữ liệu và kho restic | Bind mount |
+| `backup/` | Kho restic (bản dump cơ sở dữ liệu và `moodledata`) | Bind mount |
 | `logs/` | Log của từng dịch vụ | Bind mount |
 | `moodle_db_data` | Dữ liệu MySQL | Named volume |
 | `redis_data` | Dữ liệu Redis (AOF), session và cache | Named volume |
@@ -187,30 +187,21 @@ Nếu đã có tệp thuộc `root`, chạy `bash scripts/fix-perms.sh`; chi ti�
 
 ### Backup và phục hồi
 
-Mỗi ngày có hai job, cơ sở dữ liệu trước rồi tới tệp:
+Một job chạy mỗi ngày lúc 00:00 theo múi giờ `Asia/Ho_Chi_Minh` và tạo một
+snapshot restic duy nhất chứa cả bản dump cơ sở dữ liệu nhất quán lẫn
+`moodledata`. Ofelia gọi job này; chạy tay cũng dùng đúng job đó:
 
 ```bash
-bash scripts/db-backup.sh                 # dump vào backup/moodle_<thời-gian>.sql và moodle_latest.sql
-bash scripts/restic-backup.sh             # backup tăng dần moodledata
+bash scripts/restic-backup.sh             # chạy backup ngay, không chờ lịch
 ```
 
-Job cơ sở dữ liệu ghi một bản theo ngày và cập nhật `moodle_latest.sql`, rồi xóa
-các bản theo ngày cũ hơn 7 ngày; dump lỗi không bao giờ xóa bản cũ. Khi thật sự
-muốn dọn sạch, `scripts/db-clean.sh` xóa toàn bộ bản dump, kể cả
-`moodle_latest.sql`:
-
-```bash
-bash scripts/db-clean.sh --dry-run   # liệt kê tệp và tổng dung lượng
-bash scripts/db-clean.sh             # xóa, hỏi gõ XOA
-```
-
-Ofelia chạy dump và job restic cùng lúc 00:00 theo múi giờ
-`Asia/Ho_Chi_Minh`, nên bản dump và bản sao tệp ứng với cùng một thời điểm. Kho
-restic nằm trong
+Job dump cơ sở dữ liệu Moodle bằng `mysqldump --single-transaction` ra tệp tạm,
+sao lưu tệp đó cùng `moodledata`, rồi xóa bản SQL gốc ngay khi restic xong. Không
+còn bản dump không mã hóa nằm trong `backup/`. Kho restic nằm trong
 `backup/restic`, được mã hóa bằng `RESTIC_PASSWORD`, và chỉ lưu phần thay đổi so
 với lần trước: chạy lại khi dữ liệu không đổi chỉ thêm vài trăm byte thay vì một
 bản đầy đủ. Sau mỗi lần backup thành công, script giữ 7 bản ngày gần nhất rồi dọn
-phần cũ; một lần backup lỗi không bao giờ xóa bản tốt cuối cùng.
+phần cũ; dump hoặc backup lỗi không bao giờ xóa bản tốt cuối cùng.
 
 Hai script chia nhau công việc:
 
@@ -219,20 +210,24 @@ Hai script chia nhau công việc:
 - `scripts/restic-job.sh` là phần việc thật, chạy trong container; Ofelia gọi
   theo lịch nên không cần chạy trực tiếp.
 
+Phục hồi được tách riêng để lấy cơ sở dữ liệu, tệp, hoặc cả hai:
+
 ```bash
-bash scripts/restic-backup.sh               # backup ngay, không chờ lịch
-docker exec moodle_web restic snapshots      # xem ID và ngày
-bash scripts/restic-restore.sh              # bản mới nhất -> backup/restore_<thời-gian>
-bash scripts/restic-restore.sh <snapshot>   # một bản cụ thể trong danh sách
-bash scripts/restic-restore.sh --in-place   # bản mới nhất đè lên moodledata/, có xác nhận
+docker exec moodle_web restic snapshots           # xem ID và ngày
+bash scripts/restic-restore.sh                    # bản mới nhất, DB + tệp -> backup/restore_<thời-gian>
+bash scripts/restic-restore.sh --db               # chỉ dump DB -> thư mục tạm
+bash scripts/restic-restore.sh --files            # chỉ moodledata -> thư mục tạm
+bash scripts/restic-restore.sh 9711dea3           # một bản cụ thể trong danh sách
+bash scripts/restic-restore.sh --db --in-place    # import DB, có xác nhận
+bash scripts/restic-restore.sh --files --in-place # chép moodledata, có xác nhận
 ```
 
-Không có `--in-place`, script chỉ ghi vào `backup/restore_<thời-gian>` và in số tệp,
-nên chạy lúc nào cũng an toàn. Có `--in-place`, script dừng `moodle` và `cron`, chép
-tệp, kiểm tra quyền rồi khởi động lại. Phục hồi cơ sở dữ liệu dùng
-`bash scripts/db-restore.sh <tệp.sql>`. Mất `RESTIC_PASSWORD` là mất khả năng đọc
-kho, nên phải giữ một bản ngoài máy chủ. Quy trình từng bước và lưu ý về lock nằm
-trong [NOTES.vi.md](NOTES.vi.md#sao-lưu-tệp-bằng-restic).
+Không có `--in-place`, script chỉ ghi vào `backup/restore_<thời-gian>` và in số
+tệp cùng đường dẫn dump, nên chạy lúc nào cũng an toàn. Có `--in-place`, script
+dừng `moodle` và `cron`, import dump và/hoặc chép tệp, khởi động lại, chờ
+healthcheck rồi xóa cache. Mất `RESTIC_PASSWORD` là mất khả năng đọc kho, nên
+phải giữ một bản ngoài máy chủ. Quy trình từng bước và lưu ý về lock nằm trong
+[NOTES.vi.md](NOTES.vi.md#sao-lưu-tệp-và-cơ-sở-dữ-liệu-bằng-restic).
 
 Khi cần bỏ lịch sử restic, dùng `scripts/restic-clean.sh`: mặc định xóa toàn bộ
 snapshot nhưng giữ kho và mật khẩu, `--repo` xóa cả thư mục kho, `--dry-run` chỉ
@@ -247,7 +242,7 @@ giờ `TZ` trong `.env`, mặc định `Asia/Ho_Chi_Minh`.
 
 Ofelia không còn mount Docker socket. Nó gửi lệnh API tới `socket-proxy`
 (CetusGuard) qua mạng riêng `socket_net`, và proxy chỉ cho exec bên trong
-`moodle_web` và `moodle_db`. Tạo, khởi động hay xóa container đều bị trả `403`,
+`moodle_web`. Tạo, khởi động hay xóa container đều bị trả `403`,
 nên kẻ tấn công chiếm được scheduler cũng không lên được host. Proxy được kiểm
 tra mỗi 30 giây qua `/_ping`, và Ofelia chờ healthcheck này trước khi khởi động.
 Rủi ro còn lại và danh sách allowlist nằm trong

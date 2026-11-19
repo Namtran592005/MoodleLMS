@@ -59,7 +59,7 @@ is still open.
 
 | Limitation | Impact | Severity |
 |---|---|---|
-| Ofelia can exec as root in `moodle_web` and `moodle_db` through the proxy | A compromised scheduler controls the site and its database, but cannot create containers or reach the host | High |
+| Ofelia can exec as root in `moodle_web` through the proxy | A compromised scheduler controls the site and, through the database credentials, its data, but cannot create containers or reach the host | High |
 | Secrets in plain `.env` | No rotation, no secrets manager, readable by the deploy account | Medium |
 | No fail2ban or WAF | Only login endpoints are rate-limited; scanning and abuse are not blocked | Medium |
 | Mutable minor image tags (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) | Patch releases still arrive without notice; builds are not digest-pinned | Low |
@@ -71,7 +71,7 @@ is still open.
 | Logs only on local disk | An attacker who gets in can erase the evidence | Low |
 
 Only CetusGuard holds `/var/run/docker.sock`, and its allowlist permits nothing
-but exec calls on `moodle_web` and `moodle_db` (Fix 4). The scheduler never sees
+but exec calls on `moodle_web` (Fix 4). The scheduler never sees
 the socket, cannot create, start or delete containers, and cannot inspect the
 environment of other containers.
 
@@ -106,65 +106,66 @@ fixing even at small scale are the ones marked High above, starting with the one
 remaining backup risk. Everything else can wait until the deployment grows or the
 data becomes valuable.
 
-## Fix 1: back up `moodledata` with restic (applied)
+## Fix 1: back up files and the database with restic (applied)
 
-**Status.** Applied on 2026-11-13. The first snapshot holds 5,671 files
-(50.1 MiB) and uses 19.9 MiB in the repository; the second run with no changes
-added 680 bytes in two seconds. A restore of `filedir` produced 4,653 files,
-matching the source exactly, and `restic check` found no errors.
+**Status.** Applied on 2026-11-19, replacing the separate SQL dumps. One job now
+writes a single snapshot with a database dump and `moodledata`. The first run
+held 5,673 files (72.1 MiB restored), added 25.9 MiB and stored 5.0 MiB;
+`restic ls latest /backup/dbdump` shows the 22 MB dump. A staging restore
+produced the same 4,654 `filedir` files, and importing the dump into a scratch
+database created all 499 tables with the same `mdl_config.version`.
 
-**Before.** `scripts/db-backup.sh` dumped MySQL only. Files under
-`moodledata/filedir` existed in one place, and a full `tar` every day would have
-written about 50 MB of unchanged data each time.
+**Before.** `scripts/db-backup.sh` wrote plain SQL files (`moodle_<time>.sql`
+and `moodle_latest.sql`) while `scripts/restic-job.sh` backed up only
+`moodledata`. Two schedules, two retention policies, and an unencrypted copy of
+the database on disk.
 
-**Change.** Four small edits:
+**Change.**
 
 ```text
-php/Dockerfile        apt install restic
-docker-compose.yml    mount ./scripts:/scripts:ro, pass RESTIC_PASSWORD
-                      and RESTIC_REPOSITORY, add an Ofelia job at 00:00
-scripts/restic-job.sh job itself: init the repo, back up moodledata, exclude junk
-scripts/restic-backup.sh  host wrapper for manual runs
-scripts/restic-restore.sh restore to a staging dir or --in-place
-scripts/restic-clean.sh   remove snapshots or the whole repository
-.env / .env.example   RESTIC_PASSWORD
+php/Dockerfile            apt install restic default-mysql-client
+docker-compose.yml        drop the db mounts for /backup and /scripts
+scripts/restic-job.sh     dump the DB, back up moodledata + dump, delete the dump
+scripts/restic-restore.sh --db / --files / both, staging or --in-place
+scripts/restic-clean.sh   delete snapshots for host moodle
+ofelia/config.ini         one restic job instead of two
+ofelia/rules.list         exec only on moodle_web
 ```
 
-The job runs `nice -n 19 sh /scripts/restic-job.sh` in the `moodle` container.
-The script initialises `/backup/restic` on the first run, then backs up
-`/var/www/moodledata` with host `moodle` and tag `files`. It excludes `cache`,
+The job runs `nice -n 19 sh /scripts/restic-job.sh` in `moodle_web` at 00:00.
+It writes `/backup/dbdump/moodle.sql` with `--single-transaction`, checks the
+file is non-empty and contains `CREATE TABLE`, backs it up together with
+`moodledata`, then removes the plain SQL file. Excludes are unchanged: `cache`,
 `localcache`, `temp`, `sessions`, `muc`, `environment`, `antivirus_quarantine`
-and `trashdir`, all of which are regenerated or disposable.
+and `trashdir`.
 
 Because `filedir` names files by content hash, unchanged files are never stored
-twice. The repository grew from 0 to 22 MB for 50 MB of data.
+twice. The 22 MB dump compresses well, so later runs add mostly the database
+changes.
 
 **Verify.**
 
 ```bash
 docker exec moodle_web restic snapshots
-docker exec moodle_web restic stats --mode restore-size
+docker exec moodle_web restic ls latest /backup/dbdump
 docker exec moodle_web restic check --read-data-subset=5%
 ```
 
-**Restore.** `scripts/restic-restore.sh --in-place` asks for confirmation, stops
-the site, copies the snapshot over `moodledata/` and starts the services again.
-Then restore the database and purge caches:
+**Restore.** `--db`, `--files`, or both; without `--in-place` the script only
+writes to `backup/restore_<time>`:
 
 ```bash
+bash scripts/restic-restore.sh --db
+bash scripts/restic-restore.sh --files
 bash scripts/restic-restore.sh --in-place
-bash scripts/db-restore.sh backup/moodle_latest.sql
-docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-Without `--in-place` the same script only restores into `backup/restore_<time>`
-and prints the file counts, which is safe to run while the site is up.
-
-**Trade-offs.** The repository sits in `backup/` on the same disk, so it
-protects against mistakes and software faults, not against losing the disk. The
-job keeps 7 daily snapshots and prunes the rest; copies outside the server are
-Fix 3. `RESTIC_PASSWORD` is now as important as the data itself: without it the
-repository cannot be decrypted, so keep a copy outside the server.
+**Trade-offs.** The dump and the file scan are seconds apart, so a file deleted
+in that window can be missing from the snapshot. The repository still sits on
+the same disk, so it protects against mistakes and software faults, not against
+losing the disk. Seven daily snapshots are kept; copies outside the server are
+Fix 3. `RESTIC_PASSWORD` protects everything, including the database, so keep a
+copy outside the server.
 
 ## Fix 2: give Redis a data volume (applied)
 
@@ -219,11 +220,10 @@ the server are still missing, so this section stays open.
 
 **Before.** Snapshots accumulated forever, so `backup/` grew without bound.
 
-**Remaining change.** Copy both the dump and the repository to remote storage,
-for example with rclone:
+**Remaining change.** Copy the restic repository to remote storage, for
+example with rclone:
 
 ```bash
-rclone copy backup/moodle_latest.sql remote:moodle/db/
 rclone sync backup/restic remote:moodle/restic
 ```
 
@@ -233,12 +233,12 @@ Two details matter more than the exact command:
   than what you think it is.
 - Keep the rclone credentials in a `600` file, outside the repository.
 
-**Verify.** Confirm the newest dump and snapshot are recent and readable:
+**Verify.** Confirm the newest snapshot is recent, contains the database dump,
+and is readable:
 
 ```bash
-ls -lh backup/moodle_latest.sql
-head -5 backup/moodle_latest.sql
 docker exec moodle_web restic snapshots --latest 1
+docker exec moodle_web restic ls latest /backup/dbdump
 rclone lsl remote:moodle/restic | tail -3
 ```
 
@@ -249,10 +249,10 @@ first, which adds time to the RTO. Do a restore drill after the first month.
 ## Fix 4: filter the Docker API with CetusGuard (applied)
 
 **Status.** Applied on 2026-11-16. Ofelia no longer mounts the socket.
-`socket-proxy` holds it and allows four exec routes. Measured on the running
+`socket-proxy` holds it and allows three exec routes. Measured on the running
 stack: `containers/create`, `containers/start`, `containers/delete` and
-`containers/json` answer `403`; exec create on `moodle_web` and `moodle_db`
-answers `201`; the minute cron completes through the proxy.
+`containers/json` answer `403`; exec create on `moodle_web` answers `201` and on
+`moodle_db` answers `403`; the minute cron completes through the proxy.
 
 **Before.** `cron` mounted `/var/run/docker.sock:ro`. `:ro` only prevents writes
 to the socket file; every request that reaches the daemon still runs with daemon
@@ -265,12 +265,12 @@ container, exposing all environment secrets.
 ```text
 docker-compose.yml   add socket-proxy (CetusGuard), add internal socket_net,
                      move Ofelia to config mode, remove labels from db and moodle
-ofelia/config.ini    the four jobs
-ofelia/rules.list    exec create/start/inspect on two named containers
+ofelia/config.ini    the three jobs
+ofelia/rules.list    exec create/start/inspect on moodle_web only
 cetusguard/Dockerfile add a static busybox to the scratch image for /_ping
 ```
 
-Only the proxy keeps the socket. Its API surface is exec on two containers;
+Only the proxy keeps the socket. Its API surface is exec on `moodle_web`;
 everything else is rejected before it reaches the daemon. The proxy is built
 locally from `./cetusguard` on top of `hectorm/cetusguard:v1`; the only
 addition is the static busybox used by its healthcheck. Ofelia is pinned to
@@ -285,18 +285,19 @@ docker logs moodle_cron_scheduler 2>&1 | grep 'New job registered'
 docker exec moodle_cron_scheduler date
 ```
 
-All six containers must be `Up` and `(healthy)`, four jobs must be registered, and
-the date must show `+07`. The rule test in
+All six containers must be `Up` and `(healthy)`, three jobs must be registered,
+and the date must show `+07`. The rule test in
 [NOTES.md](NOTES.md#scheduler-and-docker-api-access) must answer `403` for
 `containers/create`.
 
 **Remaining risk.** A compromised Ofelia still runs root commands inside
-`moodle_web` and `moodle_db`, because exec is exactly what the scheduler needs.
-It can read `config.php`, the database password and `RESTIC_PASSWORD`, alter the
-site or the database, and delete local backups. It cannot create, start, stop or
-delete containers, read images, volumes or networks, or reach the host
-filesystem. Removing this last risk means removing the scheduler, not tightening
-the proxy.
+`moodle_web`, because exec is exactly what the scheduler needs. The database
+credentials let it change data over the internal network even though
+`moodle_db` no longer accepts exec. It can read `config.php`, the database
+password and `RESTIC_PASSWORD`, alter the site or the database, and delete local
+backups. It cannot create, start, stop or delete containers, read images,
+volumes or networks, or reach the host filesystem. Removing this last risk means
+removing the scheduler, not tightening the proxy.
 
 **Trade-offs.** One more container and a second network to keep in mind. If the
 proxy is down, no scheduled task runs, and the Moodle cron runs every minute, so

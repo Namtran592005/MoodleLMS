@@ -4,6 +4,5 @@
 ! Keep container names in sync with ofelia/config.ini and docker-compose.yml.
 
 POST %API_PREFIX%/containers/moodle_web/exec
-POST %API_PREFIX%/containers/moodle_db/exec
 POST %API_PREFIX%/exec/%CONTAINER_ID%/start
 GET %API_PREFIX%/exec/%CONTAINER_ID%/json

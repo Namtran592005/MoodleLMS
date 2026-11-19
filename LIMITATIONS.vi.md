@@ -58,7 +58,7 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 
 | Hạn chế | Ảnh hưởng | Mức |
 |---|---|---|
-| Ofelia exec được root trong `moodle_web` và `moodle_db` qua proxy | Scheduler bị chiếm kiểm soát website và cơ sở dữ liệu, nhưng không tạo được container hay chạm host | Cao |
+| Ofelia exec được root trong `moodle_web` qua proxy | Scheduler bị chiếm kiểm soát website và, qua thông tin đăng nhập cơ sở dữ liệu, cả dữ liệu; nhưng không tạo được container hay chạm host | Cao |
 | Bí mật nằm dạng chữ trong `.env` | Không xoay vòng, không secrets manager, tài khoản triển khai đọc được | Trung bình |
 | Không fail2ban, không WAF | Chỉ endpoint đăng nhập bị giới hạn; quét cổng và lạm dụng không bị chặn | Trung bình |
 | Thẻ image còn trôi trong dòng minor (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) | Bản vá vẫn đến mà không báo trước; build chưa ghim digest | Thấp |
@@ -70,7 +70,7 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 | Log chỉ nằm trên đĩa cục bộ | Kẻ xâm nhập có thể xóa dấu vết | Thấp |
 
 Chỉ CetusGuard giữ `/var/run/docker.sock`, và allowlist của nó không cho gì
-ngoài exec trên `moodle_web` và `moodle_db` (Sửa 4). Scheduler không thấy
+ngoài exec trên `moodle_web` (Sửa 4). Scheduler không thấy
 socket, không tạo, khởi động hay xóa container, và không đọc được biến môi
 trường của container khác.
 
@@ -104,64 +104,64 @@ Với phòng lab, bản demo hoặc triển khai nhỏ dưới khoảng 100 ngư
 kể cả ở quy mô nhỏ là các mục mức Cao ở trên, bắt đầu từ rủi ro backup còn lại.
 Phần còn lại có thể chờ tới khi hệ thống lớn hơn hoặc dữ liệu trở nên quan trọng.
 
-## Sửa 1: sao lưu `moodledata` bằng restic (đã áp dụng)
+## Sửa 1: sao lưu tệp và cơ sở dữ liệu bằng restic (đã áp dụng)
 
-**Trạng thái.** Đã áp dụng ngày 13-11-2026. Snapshot đầu có 5.671 tệp (50,1 MiB)
-và chiếm 19,9 MiB trong kho; lần chạy thứ hai khi không có thay đổi chỉ thêm
-680 byte trong hai giây. Phục hồi `filedir` cho ra 4.653 tệp, khớp chính xác với
-bản gốc, và `restic check` không báo lỗi.
+**Trạng thái.** Áp dụng ngày 19-11-2026, thay cho các bản dump SQL rời. Một job
+nay ghi một snapshot duy nhất gồm bản dump cơ sở dữ liệu và `moodledata`. Lần đầu
+có 5.673 tệp (72,1 MiB khi phục hồi), thêm 25,9 MiB và lưu 5,0 MiB;
+`restic ls latest /backup/dbdump` thấy bản dump 22 MB. Phục hồi ra thư mục tạm
+cho đúng 4.654 tệp `filedir`, và import bản dump vào một cơ sở dữ liệu nháp tạo
+đủ 499 bảng với cùng `mdl_config.version`.
 
-**Trước đây.** `scripts/db-backup.sh` chỉ dump MySQL. Tệp trong
-`moodledata/filedir` chỉ tồn tại ở một nơi, còn nén toàn bộ bằng `tar` mỗi ngày sẽ
-ghi lại khoảng 50 MB dữ liệu không đổi.
+**Trước đây.** `scripts/db-backup.sh` ghi các tệp SQL không mã hóa
+(`moodle_<thời-gian>.sql` và `moodle_latest.sql`), còn `scripts/restic-job.sh`
+chỉ sao lưu `moodledata`. Hai lịch chạy, hai chính sách lưu trữ, và một bản cơ sở
+dữ liệu không mã hóa nằm trên đĩa.
 
-**Thay đổi.** Bốn chỗ nhỏ:
+**Thay đổi.**
 
 ```text
-php/Dockerfile        apt install restic
-docker-compose.yml    mount ./scripts:/scripts:ro, truyen RESTIC_PASSWORD
-                      va RESTIC_REPOSITORY, them job Ofelia luc 00:00
-scripts/restic-job.sh     job that su: khoi tao kho, backup moodledata, loai tru rac
-scripts/restic-backup.sh  wrapper tren host de chay tay
-scripts/restic-restore.sh phuc hoi ra thu muc tam hoac --in-place
-scripts/restic-clean.sh   xoa snapshot hoac ca kho
-.env / .env.example   RESTIC_PASSWORD
+php/Dockerfile            apt install restic default-mysql-client
+docker-compose.yml        bỏ mount /backup và /scripts khỏi db
+scripts/restic-job.sh     dump DB, backup moodledata + dump, xóa bản dump
+scripts/restic-restore.sh --db / --files / cả hai, ra thư mục tạm hoặc --in-place
+scripts/restic-clean.sh   xóa snapshot của host moodle
+ofelia/config.ini         một job restic thay vì hai
+ofelia/rules.list         chỉ exec trên moodle_web
 ```
 
-Job chạy `nice -n 19 sh /scripts/restic-job.sh` trong container `moodle`.
-Script khởi tạo `/backup/restic` ở lần đầu, sau đó sao lưu `/var/www/moodledata`
-với host `moodle` và tag `files`. Nó loại trừ `cache`, `localcache`, `temp`,
-`sessions`, `muc`, `environment`, `antivirus_quarantine` và `trashdir`, đều là
-dữ liệu tái tạo được hoặc dùng xong có thể bỏ.
+Job chạy `nice -n 19 sh /scripts/restic-job.sh` trong `moodle_web` lúc 00:00.
+Nó ghi `/backup/dbdump/moodle.sql` bằng `--single-transaction`, kiểm tra tệp
+không rỗng và có `CREATE TABLE`, sao lưu cùng `moodledata`, rồi xóa tệp SQL gốc.
+Danh sách loại trừ giữ nguyên: `cache`, `localcache`, `temp`, `sessions`, `muc`,
+`environment`, `antivirus_quarantine` và `trashdir`.
 
 Vì `filedir` đặt tên tệp theo hash nội dung, tệp không đổi không bao giờ được lưu
-hai lần. Kho tăng từ 0 lên 22 MB cho 50 MB dữ liệu.
+hai lần. Bản dump 22 MB nén khá tốt, nên các lần sau chủ yếu thêm phần thay đổi
+của cơ sở dữ liệu.
 
 **Kiểm tra.**
 
 ```bash
 docker exec moodle_web restic snapshots
-docker exec moodle_web restic stats --mode restore-size
+docker exec moodle_web restic ls latest /backup/dbdump
 docker exec moodle_web restic check --read-data-subset=5%
 ```
 
-**Phục hồi.** `scripts/restic-restore.sh --in-place` hỏi xác nhận, dừng site, chép
-snapshot đè lên `moodledata/` rồi khởi động lại. Sau đó phục hồi cơ sở dữ liệu và
-xóa cache:
+**Phục hồi.** `--db`, `--files`, hoặc cả hai; không có `--in-place` thì chỉ ghi
+vào `backup/restore_<thời-gian>`:
 
 ```bash
+bash scripts/restic-restore.sh --db
+bash scripts/restic-restore.sh --files
 bash scripts/restic-restore.sh --in-place
-bash scripts/db-restore.sh backup/moodle_latest.sql
-docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-Không có `--in-place`, cùng script đó chỉ phục hồi vào `backup/restore_<thời-gian>`
-và in số tệp, nên chạy được cả khi site đang hoạt động.
-
-**Đánh đổi.** Kho nằm trong `backup/` cùng ổ đĩa, nên nó cứu được sai sót và lỗi
-phần mềm, không cứu được khi mất ổ đĩa. Job giữ 7 snapshot ngày rồi dọn phần cũ;
-bản sao ngoài máy chủ là Sửa 3. `RESTIC_PASSWORD` giờ quan trọng ngang dữ liệu:
-không có nó thì không mở được kho, nên phải giữ một bản ngoài máy chủ.
+**Đánh đổi.** Bản dump và bước quét tệp cách nhau vài giây, nên một tệp bị xóa
+đúng trong khoảng đó có thể thiếu trong snapshot. Kho vẫn nằm cùng ổ đĩa, nên nó
+cứu được sai sót và lỗi phần mềm, không cứu được khi mất ổ đĩa. Job giữ 7
+snapshot ngày; bản sao ngoài máy chủ là Sửa 3. `RESTIC_PASSWORD` bảo vệ toàn bộ,
+kể cả cơ sở dữ liệu, nên phải giữ một bản ngoài máy chủ.
 
 ## Sửa 2: cấp volume dữ liệu cho Redis (đã áp dụng)
 
@@ -216,10 +216,9 @@ máy chủ vẫn chưa có, nên mục này còn mở.
 
 **Trước đây.** Snapshot tăng mãi, nên `backup/` lớn dần không giới hạn.
 
-**Việc còn lại.** Đưa cả dump lẫn kho restic ra nơi khác, ví dụ bằng rclone:
+**Việc còn lại.** Đưa kho restic ra nơi khác, ví dụ bằng rclone:
 
 ```bash
-rclone copy backup/moodle_latest.sql remote:moodle/db/
 rclone sync backup/restic remote:moodle/restic
 ```
 
@@ -229,12 +228,12 @@ Hai chi tiết quan trọng hơn câu lệnh cụ thể:
   hơn bạn tưởng.
 - Giữ thông tin đăng nhập rclone trong tệp quyền `600`, ngoài kho mã nguồn.
 
-**Kiểm tra.** Xác nhận bản dump và snapshot mới nhất còn mới và đọc được:
+**Kiểm tra.** Xác nhận snapshot mới nhất còn mới, có bản dump cơ sở dữ liệu và đọc
+được:
 
 ```bash
-ls -lh backup/moodle_latest.sql
-head -5 backup/moodle_latest.sql
 docker exec moodle_web restic snapshots --latest 1
+docker exec moodle_web restic ls latest /backup/dbdump
 rclone lsl remote:moodle/restic | tail -3
 ```
 
@@ -245,10 +244,10 @@ Nên diễn tập phục hồi sau tháng đầu tiên.
 ## Sửa 4: lọc Docker API bằng CetusGuard (đã áp dụng)
 
 **Trạng thái.** Áp dụng ngày 16-11-2026. Ofelia không còn mount socket.
-`socket-proxy` giữ socket và chỉ cho bốn route exec. Đo trên hệ thống đang chạy:
+`socket-proxy` giữ socket và chỉ cho ba route exec. Đo trên hệ thống đang chạy:
 `containers/create`, `containers/start`, `containers/delete` và
-`containers/json` trả `403`; tạo exec trên `moodle_web` và `moodle_db` trả
-`201`; cron mỗi phút chạy xong qua proxy.
+`containers/json` trả `403`; tạo exec trên `moodle_web` trả `201`, trên
+`moodle_db` trả `403`; cron mỗi phút chạy xong qua proxy.
 
 **Trước đây.** `cron` mount `/var/run/docker.sock:ro`. `:ro` chỉ ngăn ghi vào tệp
 socket; request đến được daemon vẫn chạy với quyền của daemon, nên Ofelia bị
@@ -260,12 +259,12 @@ khiến Ofelia liệt kê và inspect mọi container, lộ toàn bộ biến m�
 ```text
 docker-compose.yml   thêm socket-proxy (CetusGuard), thêm socket_net nội bộ,
                      chuyển Ofelia sang chế độ tệp, bỏ nhãn khỏi db và moodle
-ofelia/config.ini    bốn job
-ofelia/rules.list    allowlist: exec create/start/inspect trên hai container
+ofelia/config.ini    ba job
+ofelia/rules.list    allowlist: exec create/start/inspect chỉ trên moodle_web
 cetusguard/Dockerfile thêm busybox tĩnh vào image scratch cho /_ping
 ```
 
-Chỉ proxy giữ socket. Bề mặt API của nó là exec trên hai container; mọi thứ
+Chỉ proxy giữ socket. Bề mặt API của nó là exec trên `moodle_web`; mọi thứ
 khác bị chặn trước khi tới daemon. Proxy build tại chỗ từ `./cetusguard`, dựa
 trên `hectorm/cetusguard:v1`; phần thêm duy nhất là busybox tĩnh cho
 healthcheck. Ofelia ghim `mcuadros/ofelia:0.3`.
@@ -279,17 +278,18 @@ docker logs moodle_cron_scheduler 2>&1 | grep 'New job registered'
 docker exec moodle_cron_scheduler date
 ```
 
-Cả sáu container phải `Up` và `(healthy)`, bốn job phải được đăng ký, và ngày phải
+Cả sáu container phải `Up` và `(healthy)`, ba job phải được đăng ký, và ngày phải
 hiện `+07`. Bài test rule trong
 [NOTES.vi.md](NOTES.vi.md#scheduler-và-quyền-docker-api) phải trả `403` cho
 `containers/create`.
 
-**Rủi ro còn lại.** Ofelia bị chiếm vẫn chạy được lệnh root trong `moodle_web`
-và `moodle_db`, vì exec chính là thứ scheduler cần. Nó đọc được `config.php`,
-mật khẩu cơ sở dữ liệu và `RESTIC_PASSWORD`, sửa website hoặc cơ sở dữ liệu, và
-xóa bản backup cục bộ. Nó không tạo, khởi động, dừng hay xóa container, không
-đọc image/volume/network, không chạm filesystem host. Muốn bỏ nốt rủi ro này thì
-phải bỏ scheduler, không phải siết proxy thêm.
+**Rủi ro còn lại.** Ofelia bị chiếm vẫn chạy được lệnh root trong `moodle_web`,
+vì exec chính là thứ scheduler cần. Thông tin đăng nhập cơ sở dữ liệu cho phép nó
+sửa dữ liệu qua mạng nội bộ dù `moodle_db` không còn nhận exec. Nó đọc được
+`config.php`, mật khẩu cơ sở dữ liệu và `RESTIC_PASSWORD`, sửa website hoặc cơ sở
+dữ liệu, và xóa bản backup cục bộ. Nó không tạo, khởi động, dừng hay xóa container,
+không đọc image/volume/network, không chạm filesystem host. Muốn bỏ nốt rủi ro này
+thì phải bỏ scheduler, không phải siết proxy thêm.
 
 **Đánh đổi.** Thêm một container và một mạng phải nhớ. Proxy chết thì không job
 nào chạy, nhưng cron Moodle chạy mỗi phút nên lỗi lộ ra nhanh. Tên container

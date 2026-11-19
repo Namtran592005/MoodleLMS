@@ -24,8 +24,8 @@ Sizing, tuning and fixes for problems seen in operation are in
 | `db` | `mysql:9.7` | MySQL 9.7 LTS, `utf8mb4` | internal 3306 |
 | `redis` | `redis:8.10` | Cache and sessions, 256 MB limit | internal 6379 |
 | `moodle` | build `./php` (`moodle-server-moodle:5.3`) | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | internal 80 |
-| `socket-proxy` | build `./cetusguard` (`moodle-cetusguard:v1`) | Filters the Docker API down to exec calls on two containers | internal 2375 |
-| `cron` | `mcuadros/ofelia:0.3` | Moodle cron, database dump, restic backup, log rotation | not exposed |
+| `socket-proxy` | build `./cetusguard` (`moodle-cetusguard:v1`) | Filters the Docker API down to exec calls in the Moodle container | internal 2375 |
+| `cron` | `mcuadros/ofelia:0.3` | Moodle cron, restic backup (database and files), log rotation | not exposed |
 
 Only `caddy` publishes ports. `db`, `redis` and `moodle` are reachable only on
 `moodle_net`; `cron` and `socket-proxy` share the separate internal `socket_net`
@@ -44,7 +44,7 @@ Data is laid out as follows:
 |---|---|---|
 | `moodle/` | Moodle source | Bind mount |
 | `moodledata/` | User files, cache, sessions | Bind mount |
-| `backup/` | Database dumps and the restic repository | Bind mount |
+| `backup/` | Restic repository (database dump and `moodledata`) | Bind mount |
 | `logs/` | Per-service logs | Bind mount |
 | `moodle_db_data` | MySQL data | Named volume |
 | `redis_data` | Redis AOF, sessions and cache | Named volume |
@@ -190,30 +190,22 @@ If files are already owned by `root`, run `bash scripts/fix-perms.sh`; see
 
 ### Backup and restore
 
-Two jobs run every day, database first and files second:
+One job runs every day at 00:00 in `Asia/Ho_Chi_Minh` and writes a single
+restic snapshot that holds both a consistent database dump and `moodledata`.
+Ofelia calls the job; the same job runs on demand:
 
 ```bash
-bash scripts/db-backup.sh                 # dump to backup/moodle_<time>.sql and moodle_latest.sql
-bash scripts/restic-backup.sh             # incremental backup of moodledata
+bash scripts/restic-backup.sh             # run the backup now, do not wait for the schedule
 ```
 
-The database job writes a dated dump and refreshes `moodle_latest.sql`, then
-deletes dated dumps older than 7 days; a failed dump never removes the previous
-copies. `scripts/db-clean.sh` removes every database dump, including
-`moodle_latest.sql`, when you really want a clean slate:
-
-```bash
-bash scripts/db-clean.sh --dry-run   # list the files and their total size
-bash scripts/db-clean.sh             # delete them, confirmation XOA
-```
-
-Ofelia runs the database dump and the restic job at 00:00 in
-`Asia/Ho_Chi_Minh`, so the dump and the file snapshot describe the same moment.
-The restic repository lives in `backup/restic`, is encrypted with
+The job dumps the Moodle database with `mysqldump --single-transaction` to a
+temporary file, backs that file up together with `moodledata`, then deletes the
+plain SQL file as soon as restic finishes. Nothing unencrypted stays in
+`backup/`. The restic repository lives in `backup/restic`, is encrypted with
 `RESTIC_PASSWORD`, and stores only what changed since the previous snapshot, so
 a second run of unchanged data adds a few hundred bytes instead of a full copy.
 After each successful backup it keeps the last 7 daily snapshots and prunes the
-rest; a failed backup never removes the last good copy.
+rest; a failed dump or backup never removes the last good snapshot.
 
 Two scripts share the work:
 
@@ -222,21 +214,26 @@ Two scripts share the work:
 - `scripts/restic-job.sh` is the actual job that runs inside the container;
   Ofelia calls it on schedule, so there is no need to run it directly.
 
+Restore is split so the database and the files can be recovered separately or
+together:
+
 ```bash
-bash scripts/restic-backup.sh               # back up now, do not wait for the schedule
-docker exec moodle_web restic snapshots      # list IDs and dates
-bash scripts/restic-restore.sh              # newest snapshot -> backup/restore_<time>
-bash scripts/restic-restore.sh <snapshot>   # a specific snapshot from the list
-bash scripts/restic-restore.sh --in-place   # newest snapshot over moodledata/, with confirmation
+docker exec moodle_web restic snapshots           # list IDs and dates
+bash scripts/restic-restore.sh                    # newest snapshot, DB + files -> backup/restore_<time>
+bash scripts/restic-restore.sh --db               # database dump only -> staging dir
+bash scripts/restic-restore.sh --files            # moodledata only -> staging dir
+bash scripts/restic-restore.sh 9711dea3           # a specific snapshot
+bash scripts/restic-restore.sh --db --in-place    # import the database, with confirmation
+bash scripts/restic-restore.sh --files --in-place # copy moodledata, with confirmation
 ```
 
 Without `--in-place` the script only writes to `backup/restore_<time>` and prints
-the file counts, so it is safe to run at any time. With `--in-place` it stops
-`moodle` and `cron`, copies the files, checks ownership and starts them again.
-Database restore uses `bash scripts/db-restore.sh <file.sql>`. Losing
-`RESTIC_PASSWORD` makes the repository unreadable, so keep a copy outside the
-server. Step-by-step procedures and the lock caveat are in
-[NOTES.md](NOTES.md#restic-file-backup).
+the file counts and the dump path, so it is safe to run at any time. With
+`--in-place` it stops `moodle` and `cron`, imports the dump and/or copies the
+files, starts the services again, waits for the health check and purges caches.
+Losing `RESTIC_PASSWORD` makes the repository unreadable, so keep a copy outside
+the server. Step-by-step procedures and the lock caveat are in
+[NOTES.md](NOTES.md#restic-backup-of-files-and-database).
 
 To drop the restic history, use `scripts/restic-clean.sh`: by default it removes
 every snapshot but keeps the repository and the password, `--repo` removes the
@@ -252,7 +249,7 @@ that. Every job uses the `TZ` value from `.env`, `Asia/Ho_Chi_Minh` by default.
 
 Ofelia no longer mounts the Docker socket. It sends its API calls to
 `socket-proxy` (CetusGuard) over the private `socket_net`, and the proxy only
-allows exec calls inside `moodle_web` and `moodle_db`. Creating, starting or
+allows exec calls inside `moodle_web` only. Creating, starting or
 deleting containers is rejected with `403`, so a compromised scheduler cannot
 reach the host. The proxy is checked every 30 seconds against `/_ping`, and
 Ofelia waits for that healthcheck before it starts. The remaining risk and the

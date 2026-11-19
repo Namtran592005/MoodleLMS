@@ -62,7 +62,6 @@ services:
         mkdir -p /var/log/mysql
         chown -R mysql /var/log/mysql 2>/dev/null || true
         chmod 2770 /var/log/mysql 2>/dev/null || true
-        chmod 0775 /backup 2>/dev/null || true
         LOGOPT="--log-error=/var/log/mysql/error.log"
         if ! gosu mysql sh -c 'touch /var/log/mysql/.wtest' 2>/dev/null; then
           echo "[db] CANH BAO: khong ghi duoc /var/log/mysql -> log ra stdout" >&2
@@ -86,8 +85,6 @@ services:
       MYSQL_PASSWORD: ${MOODLE_DB_PASSWORD}
     volumes:
       - moodle_db_data:/var/lib/mysql
-      - ./backup:/backup
-      - ./scripts:/scripts:ro
       - ./logs/mysql:/var/log/mysql
     networks:
       - moodle_net

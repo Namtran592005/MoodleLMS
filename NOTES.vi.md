@@ -263,7 +263,8 @@ docker compose up -d --no-build
 
 Hoặc dùng `sh scripts/images-save.sh` và `sh scripts/images-load.sh`. Tệp image
 chỉ chứa image Docker, không chứa `moodle/`, `moodledata/`, `.env` hay dữ liệu
-MySQL; phải sao chép các phần đó và `backup/moodle_latest.sql` riêng. Tên image
+MySQL; phải sao chép các phần đó riêng. Dữ liệu MySQL nằm trong volume
+`moodle_db_data`, và `backup/restic` có sẵn một bản dump gần nhất. Tên image
 đã cố định là `moodle-server-moodle:5.3`, `moodle-caddy:2.11` và
 `moodle-cetusguard:v1` nên thư mục dự án có thể đặt tên bất kỳ.
 
@@ -304,67 +305,51 @@ Kết quả mong đợi sau khi thay:
 | `/theme/boost/style/moodle.css` | 200 |
 | `/login/index.php` | 200 |
 
-### Bản dump cơ sở dữ liệu
+### Sao lưu tệp và cơ sở dữ liệu bằng restic
 
-`scripts/db-job.sh` chạy trong `moodle_db`; Ofelia gọi lúc 00:00
-(`Asia/Ho_Chi_Minh`). Mỗi lần chạy ghi `backup/moodle_<thời-gian>.sql` với tên
-tới giây, cập nhật `moodle_latest.sql` qua tệp tạm, rồi xóa các bản theo ngày cũ
-hơn 7 ngày:
+Hai loại dữ liệu phải đi cùng nhau: bản ghi trong MySQL và tệp trong
+`moodledata`. Một job chạy mỗi đêm nay chụp cả hai vào cùng một snapshot restic,
+nên chỉ còn một chính sách lưu trữ và một thứ để kiểm tra. Ofelia chạy
+`nice -n 19 sh /scripts/restic-job.sh` trong `moodle_web` lúc 00:00
+(`Asia/Ho_Chi_Minh`).
 
-```sh
-find /backup -maxdepth 1 -type f -name 'moodle_*.sql' \
-  ! -name 'moodle_latest.sql' -mtime +6 -delete
-```
-
-`-mtime +6` giữ hôm nay và 6 ngày trước đó. Bước dọn chạy sau khi dump thành công,
-và `set -e` dừng script nếu `mysqldump` lỗi, nên lần chạy hỏng không bao giờ xóa
-bản tốt cuối cùng.
-
-Container cơ sở dữ liệu chạy bằng `root`, nên job đổi chủ sở hữu tệp mới về chủ
-của `/backup`. Không có bước đó, tài khoản trên host đọc được nhưng không ghi đè
-được `moodle_latest.sql` ở lần chạy tay sau. Bản mới có quyền `600` vì chứa dữ
-liệu người dùng. Backup tay từ host cũng đi qua đúng job này:
-
-```bash
-bash scripts/db-backup.sh
-```
-
-Máy chủ bật GTID, nên job truyền `--set-gtid-purged=OFF`. Bản dump còn câu lệnh
-`GTID_PURGED` không import được vào chính máy chủ đó: MySQL báo lỗi 3546 vì tập
-GTID chồng lên `GTID_EXECUTED`. `scripts/db-restore.sh` cũng bỏ dòng đó, nên các
-bản dump tạo trước thay đổi này vẫn phục hồi được.
-
-Mỗi bản dump là tệp SQL khoảng 22 MB, nên 7 ngày tốn khoảng 154 MB. Khi muốn xóa
-toàn bộ, kể cả `moodle_latest.sql`:
-
-```bash
-bash scripts/db-clean.sh --dry-run
-bash scripts/db-clean.sh
-```
-
-Script liệt kê tệp và tổng dung lượng rồi hỏi gõ `XOA`. Nó không đụng tới
-`backup/restic` hay `moodledata/`.
-
-### Sao lưu tệp bằng restic
-
-`moodledata` chứa nội dung thật của người dùng: bài nộp, ảnh, gói SCORM.
-`filedir` là bất biến — tên tệp chính là hash nội dung — nên nén toàn bộ mỗi ngày
-là chép lại đúng những byte cũ. Restic giữ một bản cho mỗi khối, nhờ vậy lần chạy
-thứ hai khi dữ liệu không đổi chỉ thêm vài trăm byte.
-
-Job trong `scripts/restic-job.sh` (Ofelia gọi qua `docker exec`) làm bốn việc:
+Theo thứ tự, job làm như sau:
 
 1. Khởi tạo `backup/restic` nếu kho chưa có.
-2. Chạy `restic backup /var/www/moodledata` với host `moodle` và tag `files`.
-3. Loại trừ `cache`, `localcache`, `temp`, `sessions`, `muc`, `environment`,
-   `antivirus_quarantine` và `trashdir`. Tất cả đều tái tạo được hoặc dùng xong
-   có thể bỏ.
-4. Chạy `restic forget --keep-daily 7 --prune`, chỉ giữ 7 ngày gần nhất.
+2. Dump cơ sở dữ liệu Moodle ra `/backup/dbdump/moodle.sql` bằng
+   `mysqldump --single-transaction --quick --skip-lock-tables`, kết nối tới
+   `db` bằng tài khoản Moodle. Image PHP cài sẵn `default-mysql-client`; tệp
+   dump có quyền `600`.
+3. Dừng nếu dump rỗng hoặc không có `CREATE TABLE`, trước khi chạm vào kho, nên
+   snapshot cũ vẫn còn nguyên.
+4. Chạy `restic backup /var/www/moodledata /backup/dbdump` với host `moodle` và
+   tag `full`, loại trừ `cache`, `localcache`, `temp`, `sessions`, `muc`,
+   `environment`, `antivirus_quarantine` và `trashdir`. Tất cả đều tái tạo được
+   hoặc dùng xong có thể bỏ.
+5. Xóa tệp SQL gốc ngay khi restic xong, nên `backup/` không bao giờ giữ bản
+   không mã hóa.
+6. Chạy `restic forget --host moodle --group-by host --keep-daily 7 --prune`,
+   chỉ giữ 7 ngày gần nhất.
 
-Bước dọn chạy sau backup, và `set -e` dừng script nếu backup lỗi, nên một lần
-chạy hỏng không bao giờ xóa bản tốt cuối cùng. Restic cũng giữ thêm snapshot cũ
-nhất khi kho chưa đủ 7 ngày; sau một tuần số bản ổn định đúng bằng 7. Hiện kho
-khoảng 22 MB cho 50 MB dữ liệu. Bản ngoài máy chủ là việc còn lại trong
+`--single-transaction` cho một ảnh chụp InnoDB nhất quán trong khi site vẫn
+chạy. Tệp được đọc sau đó vài giây, nên một tệp tải lên giữa hai bước có thể mới
+hơn bản ghi trỏ tới nó; tệp thừa không ảnh hưởng. Tệp bị xóa đúng trong khoảng
+ngắn đó là điểm lệch nhỏ duy nhất phải chấp nhận.
+
+Vì sao không copy thẳng volume MySQL bằng restic? InnoDB trải dữ liệu trên
+tablespace, redo log và undo log; copy các tệp đó khi server đang chạy có thể ra
+một bộ hỏng. Dump là cách được hỗ trợ để lấy bản nhất quán tại một thời điểm.
+
+Vì `filedir` đặt tên tệp theo hash nội dung, tệp không đổi không bao giờ được lưu
+hai lần. Một bản dump 22 MB nén khá tốt, nên sau snapshot đầu mỗi lần chạy chủ
+yếu thêm phần thay đổi của cơ sở dữ liệu. Job dùng client MariaDB có sẵn trên
+Debian để nói chuyện với MySQL 9.7; bản dump phục hồi lại đúng server với đủ 499
+bảng và cùng `mdl_config.version`.
+
+Bước dọn chạy sau backup, và `set -e` dừng script nếu dump hoặc backup lỗi, nên
+một lần chạy hỏng không bao giờ xóa bản tốt cuối cùng. Restic cũng giữ thêm
+snapshot cũ nhất khi kho chưa đủ 7 ngày; sau một tuần số bản ổn định đúng bằng 7.
+Bản ngoài máy chủ là việc còn lại trong
 [LIMITATIONS.vi.md](LIMITATIONS.vi.md#sửa-3-dọn-và-đưa-backup-ra-khỏi-máy-chủ).
 
 Chạy backup bằng tay từ host, cùng luồng mà Ofelia dùng:
@@ -372,23 +357,24 @@ Chạy backup bằng tay từ host, cùng luồng mà Ofelia dùng:
 ```bash
 bash scripts/restic-backup.sh                 # backup ngay, rồi in 3 snapshot và dung lượng kho
 docker exec moodle_web restic snapshots
+docker exec moodle_web restic ls latest /backup/dbdump
 docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
 ```
 
 `scripts/restic-backup.sh` kiểm tra `moodle_web` đang chạy rồi gọi
-`sh /scripts/restic-job.sh` trong container, nơi có restic, `/backup/restic` và
-`/var/www/moodledata`. Wrapper này để chạy tay không phải nhớ lệnh `docker exec`
-dài, và để lịch tự động với chạy tay dùng chung một đoạn mã.
+`sh /scripts/restic-job.sh` trong container, nơi có restic, `mysqldump`,
+`/backup/restic` và `/var/www/moodledata`. Wrapper này để chạy tay không phải nhớ
+lệnh `docker exec` dài, và để lịch tự động với chạy tay dùng chung một đoạn mã.
 
 ### Dọn kho restic
 
 `scripts/restic-clean.sh` xóa lịch sử backup có chủ đích; không dùng trong vận
 hành bình thường. Mặc định script chạy
 `restic forget --keep-last 0 --prune --unsafe-allow-remove-all`, xóa mọi snapshot
-tag `files` của host `moodle` nhưng giữ kho và mật khẩu trong `.env`. `--repo` xóa
-luôn thư mục `backup/restic`, nên lần backup sau sẽ khởi tạo kho mới. `--dry-run`
-chỉ in ra sẽ xóa gì.
+của host `moodle` — cả dump cơ sở dữ liệu lẫn tệp — nhưng giữ kho và mật khẩu
+trong `.env`. `--repo` xóa luôn thư mục `backup/restic`, nên lần backup sau sẽ
+khởi tạo kho mới. `--dry-run` chỉ in ra sẽ xóa gì.
 
 ```bash
 bash scripts/restic-clean.sh --dry-run        # xem snapshot nao se bi xoa
@@ -406,32 +392,49 @@ Prune phải ghi lại các pack, nên cần chỗ trống và chạy lâu hơn 
 Nếu nó lỗi vì đầy ổ, snapshot vẫn nguyên; giải phóng chỗ rồi chạy lại:
 
 ```bash
-docker exec moodle_web restic forget --host moodle --tag files --keep-daily 7 --prune
+docker exec moodle_web restic forget --host moodle --group-by host --keep-daily 7 --prune
 ```
 
-### Phục hồi tệp
+### Phục hồi cơ sở dữ liệu và tệp
 
-`scripts/restic-restore.sh` chạy trên host và có hai chế độ.
+`scripts/restic-restore.sh` chạy trên host và mặc định phục hồi cả hai phần.
+`--db` chỉ phục hồi dump cơ sở dữ liệu, `--files` chỉ phục hồi `moodledata`, và
+có thể dùng cả hai cờ cùng lúc.
 
 Mặc định là phục hồi ra thư mục tạm: ghi vào `backup/restore_<thời-gian>`, đổi chủ
 sở hữu để tài khoản triển khai đọc được, rồi in số tệp của bản phục hồi bên cạnh số
-tệp đang dùng. Không đụng gì trong `moodledata/`.
+tệp đang dùng. Với cơ sở dữ liệu, script in đường dẫn dump và lệnh import. Không
+đụng gì trong `moodledata/` hay cơ sở dữ liệu đang chạy.
 
 ```bash
-docker exec moodle_web restic snapshots     # tim ID can dung
-bash scripts/restic-restore.sh              # ban moi nhat
-bash scripts/restic-restore.sh 9711dea3     # mot ban cu the
+docker exec moodle_web restic snapshots          # tìm ID cần dùng
+bash scripts/restic-restore.sh                   # bản mới nhất, DB + tệp
+bash scripts/restic-restore.sh --db              # chỉ dump cơ sở dữ liệu
+bash scripts/restic-restore.sh --files           # chỉ moodledata
+bash scripts/restic-restore.sh 9711dea3 --db     # một bản cụ thể, chỉ DB
 ```
 
-`--in-place` là phục hồi thật: hỏi xác nhận, dừng `moodle` và `cron`, chép tệp đè
-lên `moodledata/`, cảnh báo nếu còn tệp không thuộc tài khoản triển khai, khởi động
-lại, chờ health check và xóa cache.
+Dump nằm tại `backup/restore_<thời-gian>/backup/dbdump/moodle.sql`. Đây là tệp SQL
+không mã hóa, nên xóa thư mục tạm sau khi diễn tập hoặc phục hồi xong.
+
+`--in-place` là phục hồi thật: hỏi xác nhận, dừng `moodle` và `cron`, import dump
+và/hoặc chép tệp, khởi động lại, chờ health check và xóa cache.
 
 ```bash
-bash scripts/restic-restore.sh --in-place
-bash scripts/db-restore.sh backup/moodle_latest.sql
-docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
+bash scripts/restic-restore.sh --db --in-place     # chỉ cơ sở dữ liệu
+bash scripts/restic-restore.sh --files --in-place  # chỉ tệp
+bash scripts/restic-restore.sh --in-place          # cả hai
 ```
+
+Bước import dùng tài khoản `root` trong `moodle_db`, nên vẫn chạy được khi cơ sở
+dữ liệu đích hoặc quyền của tài khoản Moodle khác với dự kiến. Dump có
+`DROP TABLE IF EXISTS` cho từng bảng đã chụp, nên mỗi bảng được thay đúng; bảng
+chỉ có trong cơ sở dữ liệu đang chạy được giữ nguyên và Moodle bỏ qua. Script
+cũng bỏ dòng `SET @@GLOBAL.GTID_PURGED` còn sót trước khi import, nên dump cũ vẫn
+nạp được.
+
+`--db` là lý do `moodle_db` không còn mount `/backup` hay `./scripts`, và Ofelia
+không còn quyền exec trên container đó: lệnh import chạy từ host qua stdin.
 
 Bản tạm được giữ lại có chủ đích, nên chỉ xóa `backup/restore_<thời-gian>` sau khi
 đã kiểm tra site. Phục hồi chỉ chép tệp từ snapshot, không xóa tệp chỉ có trên đĩa;
@@ -468,7 +471,7 @@ command: daemon --config=/etc/ofelia/config.ini
 Nhãn đã được bỏ khỏi `db` và `moodle`. Chế độ nhãn cần `GET /containers/json`,
 `GET /containers/{id}/json` và luồng sự kiện, tức là lộ biến môi trường của mọi
 container trên host, kể cả `MYSQL_ROOT_PASSWORD` và `RESTIC_PASSWORD`. Chế độ
-tệp chỉ cần `GET /_ping`, `GET /info` và các lệnh exec mà bốn job thực sự gọi.
+tệp chỉ cần `GET /_ping`, `GET /info` và các lệnh exec mà ba job thực sự gọi.
 
 Chỉ `socket-proxy` mount `/var/run/docker.sock` ở dạng chỉ đọc. Ofelia gọi
 `tcp://socket-proxy:2375` qua `socket_net`, mạng bridge đặt `internal: true`:
@@ -486,7 +489,6 @@ lại nằm trong `ofelia/rules.list`:
 
 ```text
 POST %API_PREFIX%/containers/moodle_web/exec
-POST %API_PREFIX%/containers/moodle_db/exec
 POST %API_PREFIX%/exec/%CONTAINER_ID%/start
 GET  %API_PREFIX%/exec/%CONTAINER_ID%/json
 ```
@@ -506,16 +508,17 @@ Những gì proxy từ chối, đo trên hệ thống đang chạy:
 | `DELETE /v1.51/containers/moodle_web` | 403 |
 | `POST /v1.51/containers/moodle_redis/exec` | 403 |
 | `POST /v1.51/containers/moodle_web/exec` | 201 |
-| `POST /v1.51/containers/moodle_db/exec` | 201 |
+| `POST /v1.51/containers/moodle_db/exec` | 403 |
 
 403 ở `containers/create` là điểm quan trọng nhất: với cấu hình proxy phổ biến
 `CONTAINERS=1` + `POST=1`, lệnh đó được phép, và một container privileged mount
 `/` biến quyền API thành root host.
 
-**Rủi ro còn lại.** Ofelia vẫn quyết định *chạy gì* bên trong `moodle_web` và
-`moodle_db`. Scheduler bị chiếm vẫn chạy được lệnh root trong hai container đó,
-đọc `config.php`, `MYSQL_ROOT_PASSWORD`, `RESTIC_PASSWORD`, sửa website hoặc cơ
-sở dữ liệu, xóa bản dump và kho restic. Nó không tạo, khởi động, dừng hay xóa
+**Rủi ro còn lại.** Ofelia vẫn quyết định *chạy gì* bên trong `moodle_web`.
+Scheduler bị chiếm vẫn chạy được lệnh root trong đó, đọc `config.php`,
+`MYSQL_ROOT_PASSWORD`, `RESTIC_PASSWORD`, sửa website và xóa kho restic. Thông tin
+đăng nhập cơ sở dữ liệu cũng cho phép nó sửa dữ liệu qua mạng nội bộ, dù proxy
+không còn cho exec trên `moodle_db`. Nó không tạo, khởi động, dừng hay xóa
 container, không đọc image/volume/network, không chạm được filesystem host. Muốn
 bỏ nốt rủi ro này thì phải bỏ scheduler, không phải siết proxy thêm.
 
