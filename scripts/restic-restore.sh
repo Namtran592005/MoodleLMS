@@ -40,13 +40,24 @@ INCLUDES=()
 [ "$WANT_DB" -eq 1 ] && INCLUDES+=(--include /backup/dbdump)
 
 echo "Snapshot: $SNAP"
-docker exec moodle_web restic snapshots --latest 1
+docker exec moodle_web restic snapshots --latest 4
 
 echo
 echo "Phuc hoi ra $TARGET_HOST (khong dung du lieu that)"
-docker exec moodle_web restic restore "$SNAP" \
-  --target "$TARGET_CT" \
-  "${INCLUDES[@]}"
+if [ "$SNAP" = latest ]; then
+  if [ "$WANT_DB" -eq 1 ]; then
+    docker exec moodle_web restic restore latest \
+      --tag db --target "$TARGET_CT" --include /backup/dbdump
+  fi
+  if [ "$WANT_FILES" -eq 1 ]; then
+    docker exec moodle_web restic restore latest \
+      --tag files --target "$TARGET_CT" --include /var/www/moodledata
+  fi
+else
+  docker exec moodle_web restic restore "$SNAP" \
+    --target "$TARGET_CT" \
+    "${INCLUDES[@]}"
+fi
 docker exec moodle_web chown -R www-data:www-data "$TARGET_CT"
 
 if [ "$WANT_FILES" -eq 1 ]; then

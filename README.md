@@ -190,22 +190,25 @@ If files are already owned by `root`, run `bash scripts/fix-perms.sh`; see
 
 ### Backup and restore
 
-One job runs every day at 00:00 in `Asia/Ho_Chi_Minh` and writes a single
-restic snapshot that holds both a consistent database dump and `moodledata`.
-Ofelia calls the job; the same job runs on demand:
+One job runs every day at 00:00 in `Asia/Ho_Chi_Minh` and writes two restic
+snapshots: a database dump tagged `db`, and `moodledata` tagged `files`. Ofelia
+calls the job; the same job runs on demand:
 
 ```bash
 bash scripts/restic-backup.sh             # run the backup now, do not wait for the schedule
 ```
 
 The job dumps the Moodle database with `mysqldump --single-transaction` to a
-temporary file, backs that file up together with `moodledata`, then deletes the
-plain SQL file as soon as restic finishes. Nothing unencrypted stays in
-`backup/`. The restic repository lives in `backup/restic`, is encrypted with
-`RESTIC_PASSWORD`, and stores only what changed since the previous snapshot, so
-a second run of unchanged data adds a few hundred bytes instead of a full copy.
-After each successful backup it keeps the last 7 daily snapshots and prunes the
-rest; a failed dump or backup never removes the last good snapshot.
+temporary file, backs that file up as the `db` snapshot, backs up `moodledata`
+as the `files` snapshot, then deletes the plain SQL file as soon as restic
+finishes. Nothing unencrypted stays in `backup/`. The repository lives in
+`backup/restic` and is encrypted with `RESTIC_PASSWORD`.
+
+Restic splits data into chunks, stores each chunk once and compresses it, so a
+22 MB dump that barely changed adds around 1 MB. After each successful run the
+job keeps **2 `db` snapshots** and **7 daily `files` snapshots**, then prunes the
+chunks no snapshot uses. A failed dump or backup never removes the last good
+snapshot.
 
 Two scripts share the work:
 

@@ -308,10 +308,10 @@ Kết quả mong đợi sau khi thay:
 ### Sao lưu tệp và cơ sở dữ liệu bằng restic
 
 Hai loại dữ liệu phải đi cùng nhau: bản ghi trong MySQL và tệp trong
-`moodledata`. Một job chạy mỗi đêm nay chụp cả hai vào cùng một snapshot restic,
-nên chỉ còn một chính sách lưu trữ và một thứ để kiểm tra. Ofelia chạy
-`nice -n 19 sh /scripts/restic-job.sh` trong `moodle_web` lúc 00:00
-(`Asia/Ho_Chi_Minh`).
+`moodledata`. Một job chạy mỗi đêm nay chụp cả hai thành hai snapshot restic mang
+tag `db` và `files`, nên từng phần phục hồi riêng được và có chính sách lưu trữ
+riêng. Ofelia chạy `nice -n 19 sh /scripts/restic-job.sh` trong `moodle_web` lúc
+00:00 (`Asia/Ho_Chi_Minh`).
 
 Theo thứ tự, job làm như sau:
 
@@ -321,15 +321,21 @@ Theo thứ tự, job làm như sau:
    `db` bằng tài khoản Moodle. Image PHP cài sẵn `default-mysql-client`; tệp
    dump có quyền `600`.
 3. Dừng nếu dump rỗng hoặc không có `CREATE TABLE`, trước khi chạm vào kho, nên
-   snapshot cũ vẫn còn nguyên.
-4. Chạy `restic backup /var/www/moodledata /backup/dbdump` với host `moodle` và
-   tag `full`, loại trừ `cache`, `localcache`, `temp`, `sessions`, `muc`,
+   các snapshot cũ vẫn còn nguyên.
+4. Sao lưu bản dump thành một snapshot với host `moodle` và tag `db`.
+5. Sao lưu `/var/www/moodledata` thành snapshot thứ hai với host `moodle` và tag
+   `files`, loại trừ `cache`, `localcache`, `temp`, `sessions`, `muc`,
    `environment`, `antivirus_quarantine` và `trashdir`. Tất cả đều tái tạo được
    hoặc dùng xong có thể bỏ.
-5. Xóa tệp SQL gốc ngay khi restic xong, nên `backup/` không bao giờ giữ bản
+6. Xóa tệp SQL gốc ngay khi restic xong, nên `backup/` không bao giờ giữ bản
    không mã hóa.
-6. Chạy `restic forget --host moodle --group-by host --keep-daily 7 --prune`,
-   chỉ giữ 7 ngày gần nhất.
+7. Dọn snapshot cũ rồi prune: `--tag db --keep-last 2` và
+   `--tag files --keep-daily 7`, sau đó một lần `restic prune` để thật sự giải
+   phóng các khối không còn snapshot nào dùng.
+
+Hai snapshot thay vì một chính là điều kiện để giới hạn 2 bản DB: một snapshot gộp
+chỉ có thể giữ hoặc bỏ cả cụm, nên giữ 2 bản sẽ mất luôn phần tệp. Hai snapshot
+cách nhau khoảng hai giây, nên chúng mô tả gần như cùng một thời điểm.
 
 `--single-transaction` cho một ảnh chụp InnoDB nhất quán trong khi site vẫn
 chạy. Tệp được đọc sau đó vài giây, nên một tệp tải lên giữa hai bước có thể mới
@@ -340,16 +346,20 @@ Vì sao không copy thẳng volume MySQL bằng restic? InnoDB trải dữ liệ
 tablespace, redo log và undo log; copy các tệp đó khi server đang chạy có thể ra
 một bộ hỏng. Dump là cách được hỗ trợ để lấy bản nhất quán tại một thời điểm.
 
-Vì `filedir` đặt tên tệp theo hash nội dung, tệp không đổi không bao giờ được lưu
-hai lần. Một bản dump 22 MB nén khá tốt, nên sau snapshot đầu mỗi lần chạy chủ
-yếu thêm phần thay đổi của cơ sở dữ liệu. Job dùng client MariaDB có sẵn trên
+Restic chia dữ liệu thành từng khối, lưu mỗi khối một lần và nén lại, nên dung
+lượng tự nó tăng chậm: `filedir` đặt tên tệp theo hash nội dung, và một bản dump
+22 MB ít thay đổi chỉ thêm 8,7 MB dữ liệu đầu vào nhưng chỉ 1,0 MB được lưu trong
+lần thử. Bản dump vẫn là một bản đầy đủ của cơ sở dữ liệu nằm trong snapshot, nên
+lịch sử `db` bị giới hạn ở 2 thay vì 7. Job dùng client MariaDB có sẵn trên
 Debian để nói chuyện với MySQL 9.7; bản dump phục hồi lại đúng server với đủ 499
 bảng và cùng `mdl_config.version`.
 
 Bước dọn chạy sau backup, và `set -e` dừng script nếu dump hoặc backup lỗi, nên
-một lần chạy hỏng không bao giờ xóa bản tốt cuối cùng. Restic cũng giữ thêm
-snapshot cũ nhất khi kho chưa đủ 7 ngày; sau một tuần số bản ổn định đúng bằng 7.
-Bản ngoài máy chủ là việc còn lại trong
+một lần chạy hỏng không bao giờ xóa các bản tốt cuối cùng. Restic giữ thêm
+snapshot cũ nhất khi kho chưa đủ 7 ngày `files`; sau một tuần số bản ổn định đúng
+bằng 7, còn `db` ổn định ở 2. Snapshot mang tag `full` của cách làm cũ không khớp
+chính sách nào; xóa bản cuối bằng `restic forget <id> --prune`. Bản ngoài máy chủ
+là việc còn lại trong
 [LIMITATIONS.vi.md](LIMITATIONS.vi.md#sửa-3-dọn-và-đưa-backup-ra-khỏi-máy-chủ).
 
 Chạy backup bằng tay từ host, cùng luồng mà Ofelia dùng:
@@ -357,7 +367,7 @@ Chạy backup bằng tay từ host, cùng luồng mà Ofelia dùng:
 ```bash
 bash scripts/restic-backup.sh                 # backup ngay, rồi in 3 snapshot và dung lượng kho
 docker exec moodle_web restic snapshots
-docker exec moodle_web restic ls latest /backup/dbdump
+docker exec moodle_web restic ls latest --tag db /backup/dbdump
 docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
 ```
@@ -389,10 +399,12 @@ tắt, script lùi về `sudo rm -rf`. Sau khi dọn mặc định, kho còn và
 hợp lệ, và lần backup sau ghi lại toàn bộ cây.
 
 Prune phải ghi lại các pack, nên cần chỗ trống và chạy lâu hơn khi kho lớn dần.
-Nếu nó lỗi vì đầy ổ, snapshot vẫn nguyên; giải phóng chỗ rồi chạy lại:
+Nếu nó lỗi vì đầy ổ, snapshot vẫn nguyên; giải phóng chỗ rồi chạy lại bước dọn:
 
 ```bash
-docker exec moodle_web restic forget --host moodle --group-by host --keep-daily 7 --prune
+docker exec moodle_web restic forget --host moodle --group-by host --tag db --keep-last 2
+docker exec moodle_web restic forget --host moodle --group-by host --tag files --keep-daily 7
+docker exec moodle_web restic prune
 ```
 
 ### Phục hồi cơ sở dữ liệu và tệp

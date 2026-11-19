@@ -45,9 +45,13 @@ mv "$TMP" "$DUMP"
 echo "[restic] dump xong $(du -h "$DUMP" | cut -f1)"
 
 echo "[restic] bat dau $(date -u '+%F %T UTC')"
-restic backup "$DATA" "$DUMP_DIR" \
+restic backup "$DUMP_DIR" \
     --host moodle \
-    --tag full \
+    --tag db
+
+restic backup "$DATA" \
+    --host moodle \
+    --tag files \
     --exclude=/var/www/moodledata/cache \
     --exclude=/var/www/moodledata/localcache \
     --exclude=/var/www/moodledata/temp \
@@ -57,10 +61,16 @@ restic backup "$DATA" "$DUMP_DIR" \
     --exclude=/var/www/moodledata/antivirus_quarantine \
     --exclude=/var/www/moodledata/trashdir
 
-echo "[restic] don ban cu, giu 7 ngay"
+echo "[restic] don ban cu: 2 ban DB, 7 ngay tep"
 restic forget \
     --host moodle \
     --group-by host \
-    --keep-daily 7 \
-    --prune
+    --tag db \
+    --keep-last 2
+restic forget \
+    --host moodle \
+    --group-by host \
+    --tag files \
+    --keep-daily 7
+restic prune
 echo "[restic] xong $(date -u '+%F %T UTC')"

@@ -310,10 +310,10 @@ Expected results after the change:
 ### Restic backup of files and database
 
 Two kinds of data must stay in step: rows in MySQL and files under
-`moodledata`. A single nightly job captures both in one restic snapshot, so
-there is one retention policy and one thing to verify. Ofelia runs
-`nice -n 19 sh /scripts/restic-job.sh` in `moodle_web` at 00:00
-(`Asia/Ho_Chi_Minh`).
+`moodledata`. One nightly job captures both as two restic snapshots tagged `db`
+and `files`, so each half can be restored on its own and each half can have its
+own retention. Ofelia runs `nice -n 19 sh /scripts/restic-job.sh` in `moodle_web`
+at 00:00 (`Asia/Ho_Chi_Minh`).
 
 In order, the job:
 
@@ -323,15 +323,22 @@ In order, the job:
    `db` as the Moodle account. The PHP image installs `default-mysql-client`
    for this, and the dump is created with mode `600`.
 3. Aborts if the dump is empty or has no `CREATE TABLE`, before touching the
-   repository, so the previous snapshot stays valid.
-4. Runs `restic backup /var/www/moodledata /backup/dbdump` with host `moodle`
-   and tag `full`, excluding `cache`, `localcache`, `temp`, `sessions`, `muc`,
+   repository, so the previous snapshots stay valid.
+4. Backs the dump up as one snapshot with host `moodle` and tag `db`.
+5. Backs up `/var/www/moodledata` as a second snapshot with host `moodle` and
+   tag `files`, excluding `cache`, `localcache`, `temp`, `sessions`, `muc`,
    `environment`, `antivirus_quarantine` and `trashdir`. All are regenerated or
    disposable.
-5. Deletes the plain SQL file as soon as restic finishes, so `backup/` never
+6. Deletes the plain SQL file as soon as restic finishes, so `backup/` never
    keeps an unencrypted copy.
-6. Runs `restic forget --host moodle --group-by host --keep-daily 7 --prune`,
-   so only the last 7 days remain.
+7. Forgets old snapshots and prunes: `--tag db --keep-last 2` and
+   `--tag files --keep-daily 7`, then one `restic prune` to actually free the
+   chunks no snapshot uses.
+
+Two snapshots instead of one is what makes the 2-copy limit possible: a single
+combined snapshot can only be kept or dropped as a whole, so keeping 2 would
+drop the files too. The two snapshots are two seconds apart, so they describe
+almost the same moment.
 
 `--single-transaction` gives a consistent InnoDB view of the database while
 the site keeps running. The files are read a few seconds later, so a file
@@ -344,17 +351,21 @@ the tablespace, redo log and undo log; copying those files while the server
 runs can produce a corrupt set. The dump is the supported way to get a
 point-in-time copy.
 
-Because `filedir` names files by content hash, unchanged files are never stored
-twice. A 22 MB dump compresses well, so after the first snapshot each run adds
-mostly the database changes. The job uses the MariaDB client that Debian ships
-against MySQL 9.7; the dump restores into the same server with all 499 tables
-and the same `mdl_config.version`.
+Restic splits data into chunks, stores each chunk once and compresses it, so
+growth stays small on its own: `filedir` names files by content hash, and a
+22 MB dump that changed little added 8.7 MB of input but only 1.0 MB stored in
+the test run. The dump is still a full copy of the database inside the
+snapshot, which is why the `db` history is capped at 2 instead of 7. The job
+uses the MariaDB client that Debian ships against MySQL 9.7; the dump restores
+into the same server with all 499 tables and the same `mdl_config.version`.
 
 The cleanup runs after the backup, and `set -e` stops the script if the dump or
-backup fails, so a bad run never deletes the last good snapshot. Restic also
-keeps the oldest snapshot while there are fewer than 7 days in the repository;
-after a week the count settles at exactly 7. Offsite copies are the remaining
-task in
+backup fails, so a bad run never deletes the last good snapshots. Restic keeps
+the oldest snapshot while there are fewer than 7 days of `files` snapshots;
+after a week that count settles at exactly 7, and `db` settles at 2. Snapshots
+tagged `full` by the previous single-snapshot setup are not matched by either
+policy; remove the last one with `restic forget <id> --prune`. Offsite copies
+are the remaining task in
 [LIMITATIONS.md](LIMITATIONS.md#fix-3-prune-and-copy-backups-off-the-server).
 
 Run a backup by hand from the host, which is the same flow Ofelia uses:
@@ -362,7 +373,7 @@ Run a backup by hand from the host, which is the same flow Ofelia uses:
 ```bash
 bash scripts/restic-backup.sh                 # backup now, then show 3 snapshots and repo size
 docker exec moodle_web restic snapshots
-docker exec moodle_web restic ls latest /backup/dbdump
+docker exec moodle_web restic ls latest --tag db /backup/dbdump
 docker exec moodle_web restic stats --mode restore-size
 docker exec moodle_web restic check --read-data-subset=5%
 ```
@@ -398,10 +409,12 @@ next backup stores the whole tree again.
 
 Prune rewrites pack files, so it needs free space and takes longer as the
 repository grows. If it ever fails on a full disk, the snapshots stay intact;
-free space and run it again:
+free space and run the retention again:
 
 ```bash
-docker exec moodle_web restic forget --host moodle --group-by host --keep-daily 7 --prune
+docker exec moodle_web restic forget --host moodle --group-by host --tag db --keep-last 2
+docker exec moodle_web restic forget --host moodle --group-by host --tag files --keep-daily 7
+docker exec moodle_web restic prune
 ```
 
 ### Restoring the database and files

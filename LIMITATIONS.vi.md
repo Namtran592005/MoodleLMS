@@ -5,8 +5,8 @@
 Danh sách thẳng thắn những gì bản triển khai này chưa làm được. Mức độ phản ánh
 hậu quả khi sự cố xảy ra trong vận hành thật, không phải khả năng xảy ra. Hai trong
 ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ liệu và `moodledata`
-được sao lưu bằng restic. Vòng đời backup được sửa tiếp ngày 14-11-2026: job giữ
-7 ngày rồi dọn phần cũ. Rủi ro còn lại, bản sao ngoài máy chủ, vẫn đang mở.
+được sao lưu bằng restic. Bản dump cơ sở dữ liệu vào cùng kho từ ngày 19-11-2026.
+Rủi ro còn lại, bản sao ngoài máy chủ, vẫn đang mở.
 
 ## Ba rủi ro lớn nhất
 
@@ -14,7 +14,7 @@ ba rủi ro lớn nhất đã sửa ngày 13-11-2026: Redis có volume dữ li�
 |---|---|---|
 | 1 | Backup `moodledata` — đã sửa 13-11-2026 | Trước đây: tệp người dùng, bài nộp, ảnh chỉ tồn tại trên ổ đĩa này |
 | 2 | Volume Redis — đã sửa 13-11-2026 | Trước đây: tạo lại container là mọi người bị đăng xuất |
-| 3 | Backup chỉ nằm trên ổ đĩa máy chủ | Hỏng đĩa là mất toàn bộ bản sao; snapshot bị dọn sau 7 ngày |
+| 3 | Backup chỉ nằm trên ổ đĩa máy chủ | Hỏng đĩa là mất toàn bộ bản sao; chỉ giữ 2 bản DB và 7 bản tệp theo ngày |
 
 ## Kiến trúc
 
@@ -107,11 +107,11 @@ Phần còn lại có thể chờ tới khi hệ thống lớn hơn hoặc dữ 
 ## Sửa 1: sao lưu tệp và cơ sở dữ liệu bằng restic (đã áp dụng)
 
 **Trạng thái.** Áp dụng ngày 19-11-2026, thay cho các bản dump SQL rời. Một job
-nay ghi một snapshot duy nhất gồm bản dump cơ sở dữ liệu và `moodledata`. Lần đầu
-có 5.673 tệp (72,1 MiB khi phục hồi), thêm 25,9 MiB và lưu 5,0 MiB;
-`restic ls latest /backup/dbdump` thấy bản dump 22 MB. Phục hồi ra thư mục tạm
-cho đúng 4.654 tệp `filedir`, và import bản dump vào một cơ sở dữ liệu nháp tạo
-đủ 499 bảng với cùng `mdl_config.version`.
+nay ghi hai snapshot: bản dump cơ sở dữ liệu mang tag `db` và `moodledata` mang
+tag `files`. Lần chạy gộp đầu tiên có 5.673 tệp (72,1 MiB khi phục hồi), thêm
+25,9 MiB và lưu 5,0 MiB; `restic ls latest --tag db /backup/dbdump` thấy bản dump
+22 MB. Phục hồi ra thư mục tạm cho đúng 4.654 tệp `filedir`, và import bản dump
+vào một cơ sở dữ liệu nháp tạo đủ 499 bảng với cùng `mdl_config.version`.
 
 **Trước đây.** `scripts/db-backup.sh` ghi các tệp SQL không mã hóa
 (`moodle_<thời-gian>.sql` và `moodle_latest.sql`), còn `scripts/restic-job.sh`
@@ -123,7 +123,7 @@ dữ liệu không mã hóa nằm trên đĩa.
 ```text
 php/Dockerfile            apt install restic default-mysql-client
 docker-compose.yml        bỏ mount /backup và /scripts khỏi db
-scripts/restic-job.sh     dump DB, backup moodledata + dump, xóa bản dump
+scripts/restic-job.sh     dump DB, backup dump và moodledata thành hai snapshot
 scripts/restic-restore.sh --db / --files / cả hai, ra thư mục tạm hoặc --in-place
 scripts/restic-clean.sh   xóa snapshot của host moodle
 ofelia/config.ini         một job restic thay vì hai
@@ -132,19 +132,26 @@ ofelia/rules.list         chỉ exec trên moodle_web
 
 Job chạy `nice -n 19 sh /scripts/restic-job.sh` trong `moodle_web` lúc 00:00.
 Nó ghi `/backup/dbdump/moodle.sql` bằng `--single-transaction`, kiểm tra tệp
-không rỗng và có `CREATE TABLE`, sao lưu cùng `moodledata`, rồi xóa tệp SQL gốc.
-Danh sách loại trừ giữ nguyên: `cache`, `localcache`, `temp`, `sessions`, `muc`,
-`environment`, `antivirus_quarantine` và `trashdir`.
+không rỗng và có `CREATE TABLE`, sao lưu thành snapshot tag `db`, sao lưu
+`moodledata` thành snapshot tag `files`, rồi xóa tệp SQL gốc. Danh sách loại trừ
+giữ nguyên: `cache`, `localcache`, `temp`, `sessions`, `muc`, `environment`,
+`antivirus_quarantine` và `trashdir`.
 
-Vì `filedir` đặt tên tệp theo hash nội dung, tệp không đổi không bao giờ được lưu
-hai lần. Bản dump 22 MB nén khá tốt, nên các lần sau chủ yếu thêm phần thay đổi
-của cơ sở dữ liệu.
+Chính sách lưu trữ tính theo tag: `--tag db --keep-last 2` và
+`--tag files --keep-daily 7`, sau đó một lần `restic prune`. Hai snapshot thay vì
+một chính là điều kiện để giới hạn 2 bản: snapshot gộp chỉ giữ hoặc bỏ được cả
+cụm.
+
+Vì `filedir` đặt tên tệp theo hash nội dung và restic khử trùng lặp rồi nén từng
+khối, tệp không đổi không bao giờ được lưu hai lần. Một bản dump 22 MB ít thay
+đổi thêm 8,7 MB đầu vào nhưng chỉ lưu 1,0 MB, nên lịch sử 2 bản DB tốn thêm
+khoảng 2 MB so với bản hiện tại.
 
 **Kiểm tra.**
 
 ```bash
 docker exec moodle_web restic snapshots
-docker exec moodle_web restic ls latest /backup/dbdump
+docker exec moodle_web restic ls latest --tag db /backup/dbdump
 docker exec moodle_web restic check --read-data-subset=5%
 ```
 
@@ -157,11 +164,12 @@ bash scripts/restic-restore.sh --files
 bash scripts/restic-restore.sh --in-place
 ```
 
-**Đánh đổi.** Bản dump và bước quét tệp cách nhau vài giây, nên một tệp bị xóa
-đúng trong khoảng đó có thể thiếu trong snapshot. Kho vẫn nằm cùng ổ đĩa, nên nó
-cứu được sai sót và lỗi phần mềm, không cứu được khi mất ổ đĩa. Job giữ 7
-snapshot ngày; bản sao ngoài máy chủ là Sửa 3. `RESTIC_PASSWORD` bảo vệ toàn bộ,
-kể cả cơ sở dữ liệu, nên phải giữ một bản ngoài máy chủ.
+**Đánh đổi.** Hai snapshot cách nhau vài giây, nên một tệp bị xóa đúng trong
+khoảng đó có thể thiếu trong snapshot tệp dù cơ sở dữ liệu vẫn trỏ tới. Kho vẫn
+nằm cùng ổ đĩa, nên nó cứu được sai sót và lỗi phần mềm, không cứu được khi mất
+ổ đĩa. Giữ 2 bản DB và 7 bản tệp theo ngày; bản sao ngoài máy chủ là Sửa 3.
+`RESTIC_PASSWORD` bảo vệ toàn bộ, kể cả cơ sở dữ liệu, nên phải giữ một bản ngoài
+máy chủ.
 
 ## Sửa 2: cấp volume dữ liệu cho Redis (đã áp dụng)
 
@@ -210,9 +218,10 @@ khi mất Redis nhưng chậm hơn một chút.
 
 ## Sửa 3: dọn và đưa backup ra khỏi máy chủ
 
-**Trạng thái.** Phần dọn đã áp dụng ngày 14-11-2026: job hằng ngày chạy
-`restic forget --keep-daily 7 --prune` sau khi backup thành công. Bản sao ngoài
-máy chủ vẫn chưa có, nên mục này còn mở.
+**Trạng thái.** Phần dọn đã áp dụng ngày 14-11-2026 và tách theo tag ngày
+19-11-2026: job hằng ngày chạy `restic forget` với `--tag db --keep-last 2` và
+`--tag files --keep-daily 7`, rồi prune. Bản sao ngoài máy chủ vẫn chưa có, nên
+mục này còn mở.
 
 **Trước đây.** Snapshot tăng mãi, nên `backup/` lớn dần không giới hạn.
 
@@ -228,12 +237,13 @@ Hai chi tiết quan trọng hơn câu lệnh cụ thể:
   hơn bạn tưởng.
 - Giữ thông tin đăng nhập rclone trong tệp quyền `600`, ngoài kho mã nguồn.
 
-**Kiểm tra.** Xác nhận snapshot mới nhất còn mới, có bản dump cơ sở dữ liệu và đọc
+**Kiểm tra.** Xác nhận snapshot mới nhất còn mới, bản DB có dump và bản sao đọc
 được:
 
 ```bash
-docker exec moodle_web restic snapshots --latest 1
-docker exec moodle_web restic ls latest /backup/dbdump
+docker exec moodle_web restic snapshots --latest 2 --tag db
+docker exec moodle_web restic snapshots --latest 2 --tag files
+docker exec moodle_web restic ls latest --tag db /backup/dbdump
 rclone lsl remote:moodle/restic | tail -3
 ```
 

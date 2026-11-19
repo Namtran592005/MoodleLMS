@@ -5,9 +5,8 @@
 An honest list of what this deployment does not do. Severity reflects the impact
 when the problem happens in production, not how likely it is. Two of the three
 highest risks were fixed on 2026-11-13: Redis now has a data volume and
-`moodledata` is backed up with restic. Retention followed on 2026-11-14: the job
-keeps 7 days and prunes the rest. The remaining one, copies outside the server,
-is still open.
+`moodledata` is backed up with restic. Database dumps joined the same repository
+on 2026-11-19. The remaining one, copies outside the server, is still open.
 
 ## The three highest risks
 
@@ -15,7 +14,7 @@ is still open.
 |---|---|---|
 | 1 | `moodledata` backup — fixed 2026-11-13 | Was: user files, submissions and uploads existed only on this disk |
 | 2 | Redis data volume — fixed 2026-11-13 | Was: recreating the container logged every user out |
-| 3 | Backups only on the server disk | Disk failure loses every copy; snapshots are pruned after 7 days |
+| 3 | Backups only on the server disk | Disk failure loses every copy; only 2 database copies and 7 daily file copies are kept |
 
 ## Architecture
 
@@ -109,11 +108,12 @@ data becomes valuable.
 ## Fix 1: back up files and the database with restic (applied)
 
 **Status.** Applied on 2026-11-19, replacing the separate SQL dumps. One job now
-writes a single snapshot with a database dump and `moodledata`. The first run
-held 5,673 files (72.1 MiB restored), added 25.9 MiB and stored 5.0 MiB;
-`restic ls latest /backup/dbdump` shows the 22 MB dump. A staging restore
-produced the same 4,654 `filedir` files, and importing the dump into a scratch
-database created all 499 tables with the same `mdl_config.version`.
+writes two snapshots: a database dump tagged `db` and `moodledata` tagged
+`files`. The first combined run held 5,673 files (72.1 MiB restored), added
+25.9 MiB and stored 5.0 MiB; `restic ls latest --tag db /backup/dbdump` shows
+the 22 MB dump. A staging restore produced the same 4,654 `filedir` files, and
+importing the dump into a scratch database created all 499 tables with the same
+`mdl_config.version`.
 
 **Before.** `scripts/db-backup.sh` wrote plain SQL files (`moodle_<time>.sql`
 and `moodle_latest.sql`) while `scripts/restic-job.sh` backed up only
@@ -125,7 +125,7 @@ the database on disk.
 ```text
 php/Dockerfile            apt install restic default-mysql-client
 docker-compose.yml        drop the db mounts for /backup and /scripts
-scripts/restic-job.sh     dump the DB, back up moodledata + dump, delete the dump
+scripts/restic-job.sh     dump the DB, back up dump and moodledata separately
 scripts/restic-restore.sh --db / --files / both, staging or --in-place
 scripts/restic-clean.sh   delete snapshots for host moodle
 ofelia/config.ini         one restic job instead of two
@@ -134,20 +134,25 @@ ofelia/rules.list         exec only on moodle_web
 
 The job runs `nice -n 19 sh /scripts/restic-job.sh` in `moodle_web` at 00:00.
 It writes `/backup/dbdump/moodle.sql` with `--single-transaction`, checks the
-file is non-empty and contains `CREATE TABLE`, backs it up together with
-`moodledata`, then removes the plain SQL file. Excludes are unchanged: `cache`,
-`localcache`, `temp`, `sessions`, `muc`, `environment`, `antivirus_quarantine`
-and `trashdir`.
+file is non-empty and contains `CREATE TABLE`, backs it up as the snapshot
+tagged `db`, backs up `moodledata` as the snapshot tagged `files`, then removes
+the plain SQL file. Excludes are unchanged: `cache`, `localcache`, `temp`,
+`sessions`, `muc`, `environment`, `antivirus_quarantine` and `trashdir`.
 
-Because `filedir` names files by content hash, unchanged files are never stored
-twice. The 22 MB dump compresses well, so later runs add mostly the database
-changes.
+Retention is per tag: `--tag db --keep-last 2` and `--tag files --keep-daily 7`,
+followed by one `restic prune`. Two snapshots instead of one is what allows the
+limit: a combined snapshot can only be kept or dropped whole.
+
+Because `filedir` names files by content hash and restic deduplicates and
+compresses every chunk, unchanged files are never stored twice. A 22 MB dump
+that changed little added 8.7 MB of input but only 1.0 MB stored, so a two-copy
+database history costs about 2 MB on top of the current dump.
 
 **Verify.**
 
 ```bash
 docker exec moodle_web restic snapshots
-docker exec moodle_web restic ls latest /backup/dbdump
+docker exec moodle_web restic ls latest --tag db /backup/dbdump
 docker exec moodle_web restic check --read-data-subset=5%
 ```
 
@@ -160,12 +165,13 @@ bash scripts/restic-restore.sh --files
 bash scripts/restic-restore.sh --in-place
 ```
 
-**Trade-offs.** The dump and the file scan are seconds apart, so a file deleted
-in that window can be missing from the snapshot. The repository still sits on
-the same disk, so it protects against mistakes and software faults, not against
-losing the disk. Seven daily snapshots are kept; copies outside the server are
-Fix 3. `RESTIC_PASSWORD` protects everything, including the database, so keep a
-copy outside the server.
+**Trade-offs.** The two snapshots are seconds apart, so a file deleted in that
+window can be missing from the file snapshot while the database still refers to
+it. The repository still sits on the same disk, so it protects against mistakes
+and software faults, not against losing the disk. Two database copies and seven
+daily file copies are kept; copies outside the server are Fix 3.
+`RESTIC_PASSWORD` protects everything, including the database, so keep a copy
+outside the server.
 
 ## Fix 2: give Redis a data volume (applied)
 
@@ -214,9 +220,10 @@ handler, which survives Redis entirely but loses some speed.
 
 ## Fix 3: prune and copy backups off the server
 
-**Status.** Pruning was applied on 2026-11-14: the daily job now runs
-`restic forget --keep-daily 7 --prune` after a successful backup. Copies outside
-the server are still missing, so this section stays open.
+**Status.** Pruning was applied on 2026-11-14 and made per tag on 2026-11-19: the
+daily job runs `restic forget` with `--tag db --keep-last 2` and `--tag files
+--keep-daily 7`, then prunes. Copies outside the server are still missing, so
+this section stays open.
 
 **Before.** Snapshots accumulated forever, so `backup/` grew without bound.
 
@@ -233,12 +240,13 @@ Two details matter more than the exact command:
   than what you think it is.
 - Keep the rclone credentials in a `600` file, outside the repository.
 
-**Verify.** Confirm the newest snapshot is recent, contains the database dump,
-and is readable:
+**Verify.** Confirm the newest snapshots are recent, the database one contains
+the dump, and the copy is readable:
 
 ```bash
-docker exec moodle_web restic snapshots --latest 1
-docker exec moodle_web restic ls latest /backup/dbdump
+docker exec moodle_web restic snapshots --latest 2 --tag db
+docker exec moodle_web restic snapshots --latest 2 --tag files
+docker exec moodle_web restic ls latest --tag db /backup/dbdump
 rclone lsl remote:moodle/restic | tail -3
 ```
 

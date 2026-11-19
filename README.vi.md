@@ -187,21 +187,25 @@ Nếu đã có tệp thuộc `root`, chạy `bash scripts/fix-perms.sh`; chi ti�
 
 ### Backup và phục hồi
 
-Một job chạy mỗi ngày lúc 00:00 theo múi giờ `Asia/Ho_Chi_Minh` và tạo một
-snapshot restic duy nhất chứa cả bản dump cơ sở dữ liệu nhất quán lẫn
-`moodledata`. Ofelia gọi job này; chạy tay cũng dùng đúng job đó:
+Một job chạy mỗi ngày lúc 00:00 theo múi giờ `Asia/Ho_Chi_Minh` và tạo hai
+snapshot restic: bản dump cơ sở dữ liệu mang tag `db`, và `moodledata` mang tag
+`files`. Ofelia gọi job này; chạy tay cũng dùng đúng job đó:
 
 ```bash
 bash scripts/restic-backup.sh             # chạy backup ngay, không chờ lịch
 ```
 
 Job dump cơ sở dữ liệu Moodle bằng `mysqldump --single-transaction` ra tệp tạm,
-sao lưu tệp đó cùng `moodledata`, rồi xóa bản SQL gốc ngay khi restic xong. Không
-còn bản dump không mã hóa nằm trong `backup/`. Kho restic nằm trong
-`backup/restic`, được mã hóa bằng `RESTIC_PASSWORD`, và chỉ lưu phần thay đổi so
-với lần trước: chạy lại khi dữ liệu không đổi chỉ thêm vài trăm byte thay vì một
-bản đầy đủ. Sau mỗi lần backup thành công, script giữ 7 bản ngày gần nhất rồi dọn
-phần cũ; dump hoặc backup lỗi không bao giờ xóa bản tốt cuối cùng.
+sao lưu tệp đó thành snapshot `db`, sao lưu `moodledata` thành snapshot `files`,
+rồi xóa bản SQL gốc ngay khi restic xong. Không còn bản dump không mã hóa nằm
+trong `backup/`. Kho nằm trong `backup/restic` và được mã hóa bằng
+`RESTIC_PASSWORD`.
+
+Restic chia dữ liệu thành từng khối, lưu mỗi khối một lần và nén lại, nên một bản
+dump 22 MB gần như không đổi chỉ thêm khoảng 1 MB. Sau mỗi lần chạy thành công,
+job giữ **2 snapshot `db`** và **7 snapshot `files` theo ngày**, rồi dọn những
+khối không còn snapshot nào dùng. Dump hoặc backup lỗi không bao giờ xóa bản tốt
+cuối cùng.
 
 Hai script chia nhau công việc:
 
