@@ -484,6 +484,61 @@ repository cannot be decrypted, so keep a copy outside the server. To move the
 repository later, set `RESTIC_REPOSITORY` in `.env` to an `s3:`, `rclone:` or
 `sftp:` target and run `restic init` there once.
 
+### Exporting the dump as a plain SQL file
+
+`scripts/restic-export.sh` is the manual escape hatch. It restores the newest
+`db` snapshot inside the container, copies `moodle.sql` to the host with
+`docker exec cat`, and removes the container copy. The default path is outside
+the deployment directory, `~/moodle-dump_<time>.sql`, with mode `600`.
+
+```bash
+bash scripts/restic-export.sh                           # newest db snapshot -> ~/moodle-dump_<time>.sql
+bash scripts/restic-export.sh --out=/media/usb/moodle.sql
+bash scripts/restic-export.sh 9711dea3 --out=~/old.sql  # a specific snapshot
+```
+
+The result is plain SQL, so any MySQL or MariaDB client can import it, and it is
+the quickest way to hand a copy to someone who does not have the restic
+password. Delete it once it has been moved: an unencrypted database on disk is
+exactly what the restic setup avoids.
+
+### Changing RESTIC_PASSWORD
+
+The password encrypts the repository key, so editing only `RESTIC_PASSWORD` in
+`.env` leaves existing snapshots unreadable. There are two ways forward.
+
+Keep the snapshots and only change the password, which needs the old password
+once:
+
+```bash
+docker exec -it moodle_web restic key passwd
+```
+
+Then put the new password in `.env` and recreate the container so it sees the
+value:
+
+```bash
+docker compose up -d moodle
+docker exec moodle_web restic snapshots
+```
+
+Start over, which is the right choice when the old password is lost or the
+history is unwanted:
+
+```bash
+# edit RESTIC_PASSWORD in .env first
+docker compose up -d moodle
+mv backup/restic backup/restic-old     # optional, only if the old snapshots matter
+bash scripts/restic-clean.sh --repo    # delete backup/restic, asks for XOA
+bash scripts/restic-backup.sh          # init a new repo and take the first snapshot
+docker exec moodle_web restic snapshots
+docker exec moodle_web restic check
+```
+
+The old repository cannot be opened with the new password, so copy it aside
+before deleting it if it still has value. Only `moodle_web` runs restic, and it
+reads the value from `.env`, so nothing else needs editing.
+
 ### Scheduler and Docker API access
 
 Ofelia runs from a file, not from container labels:

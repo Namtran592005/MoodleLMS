@@ -470,6 +470,57 @@ không mở được kho, nên phải giữ một bản ngoài máy chủ. Khi m
 khác, đặt `RESTIC_REPOSITORY` trong `.env` thành đích `s3:`, `rclone:` hoặc
 `sftp:` rồi chạy `restic init` ở đó một lần.
 
+### Xuất dump ra tệp SQL rời
+
+`scripts/restic-export.sh` là đường thủ công. Script phục hồi snapshot `db` mới
+nhất trong container, chép `moodle.sql` ra host bằng `docker exec cat`, rồi xóa
+bản trong container. Mặc định ghi ra ngoài thư mục triển khai,
+`~/moodle-dump_<thời-gian>.sql`, quyền `600`.
+
+```bash
+bash scripts/restic-export.sh                           # snapshot db mới nhất -> ~/moodle-dump_<thời-gian>.sql
+bash scripts/restic-export.sh --out=/media/usb/moodle.sql
+bash scripts/restic-export.sh 9711dea3 --out=~/old.sql  # một snapshot cụ thể
+```
+
+Kết quả là SQL thuần, client MySQL hay MariaDB nào cũng import được, và là cách
+nhanh nhất để đưa bản sao cho người không có mật khẩu restic. Chuyển đi rồi xóa:
+một cơ sở dữ liệu không mã hóa trên đĩa chính là thứ cách làm restic này tránh.
+
+### Đổi RESTIC_PASSWORD
+
+Mật khẩu mã hóa khóa của kho, nên chỉ sửa `RESTIC_PASSWORD` trong `.env` là các
+snapshot cũ không còn đọc được. Có hai hướng.
+
+Giữ snapshot và chỉ đổi mật khẩu, cần mật khẩu cũ một lần:
+
+```bash
+docker exec -it moodle_web restic key passwd
+```
+
+Sau đó ghi mật khẩu mới vào `.env` và tạo lại container để nó nhận giá trị:
+
+```bash
+docker compose up -d moodle
+docker exec moodle_web restic snapshots
+```
+
+Làm lại từ đầu, phù hợp khi mất mật khẩu cũ hoặc không muốn giữ lịch sử:
+
+```bash
+# sửa RESTIC_PASSWORD trong .env trước
+docker compose up -d moodle
+mv backup/restic backup/restic-old     # tùy chọn, chỉ khi còn cần snapshot cũ
+bash scripts/restic-clean.sh --repo    # xóa backup/restic, hỏi XOA
+bash scripts/restic-backup.sh          # tạo kho mới và chụp bản đầu
+docker exec moodle_web restic snapshots
+docker exec moodle_web restic check
+```
+
+Kho cũ không mở được bằng mật khẩu mới, nên chép nó sang chỗ khác trước khi xóa
+nếu còn giá trị. Chỉ `moodle_web` chạy restic và nó đọc giá trị từ `.env`, nên
+không cần sửa chỗ nào khác.
+
 ### Scheduler và quyền Docker API
 
 Ofelia chạy bằng tệp cấu hình, không dùng nhãn container:

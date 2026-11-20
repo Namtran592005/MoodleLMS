@@ -228,7 +228,14 @@ bash scripts/restic-restore.sh --files            # moodledata only -> staging d
 bash scripts/restic-restore.sh 9711dea3           # a specific snapshot
 bash scripts/restic-restore.sh --db --in-place    # import the database, with confirmation
 bash scripts/restic-restore.sh --files --in-place # copy moodledata, with confirmation
+bash scripts/restic-export.sh                     # plain SQL dump -> ~/moodle-dump_<time>.sql
 ```
+
+`restic-export.sh` pulls the dump out of the newest `db` snapshot into a plain
+SQL file outside the project, `~/moodle-dump_<time>.sql` by default, so it can be
+imported elsewhere or copied to a USB disk. Pass `--out=/path/file.sql` to choose
+the path and a snapshot ID to pick an older one. The file is not encrypted:
+delete it after moving it.
 
 Without `--in-place` the script only writes to `backup/restore_<time>` and prints
 the file counts and the dump path, so it is safe to run at any time. With

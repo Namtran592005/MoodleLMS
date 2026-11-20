@@ -224,7 +224,13 @@ bash scripts/restic-restore.sh --files            # chỉ moodledata -> thư m�
 bash scripts/restic-restore.sh 9711dea3           # một bản cụ thể trong danh sách
 bash scripts/restic-restore.sh --db --in-place    # import DB, có xác nhận
 bash scripts/restic-restore.sh --files --in-place # chép moodledata, có xác nhận
+bash scripts/restic-export.sh                     # dump thành SQL rời -> ~/moodle-dump_<thời-gian>.sql
 ```
+
+`restic-export.sh` lấy dump từ snapshot `db` mới nhất ra một tệp SQL rời nằm ngoài
+thư mục triển khai, mặc định `~/moodle-dump_<thời-gian>.sql`, để import ở máy khác
+hoặc chép ra USB. Thêm `--out=/đường/dẫn/file.sql` để chọn chỗ ghi và một ID
+snapshot để lấy bản cũ hơn. Tệp này không mã hóa: chuyển đi rồi xóa.
 
 Không có `--in-place`, script chỉ ghi vào `backup/restore_<thời-gian>` và in số
 tệp cùng đường dẫn dump, nên chạy lúc nào cũng an toàn. Có `--in-place`, script
