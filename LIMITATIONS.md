@@ -80,6 +80,7 @@ environment of other containers.
 |---|---|---|
 | Manual upgrades | Downtime and human error on every release | High |
 | `.htaccess` can be overwritten by a release | Schema files become downloadable until restored | Medium |
+| PHP stays on 8.5 | 8.6 fails twice: phpredis 6.3.0 does not compile (only unreleased master supports it) and Moodle's locked Composer packages require `~8.5.0`, so the boot-time install restart-loops the container | Low |
 | `MOODLE_WWWROOT` must match the public URL | A wrong value breaks links, redirects and cookies; startup only warns | Medium |
 | `docs/` is gitignored | Operational knowledge lives on one machine | Medium |
 | No monitoring or alerting | Failures are found by users, not by the team | High |

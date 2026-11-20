@@ -268,6 +268,27 @@ copy those separately. The database lives in the `moodle_db_data` volume, and
 `moodle-server-moodle:5.3`, `moodle-caddy:2.11` and `moodle-cetusguard:v1`,
 so the directory can have any name.
 
+### Trying PHP 8.6
+
+Tested 2026-11-20. `php:8.6-fpm` exists and Moodle 5.3 runs on it, but the
+image cannot boot yet:
+
+- `phpredis` 6.3.0 does not compile. `zval_dtor`, `XtOffsetOf`,
+  `php_hash_bin2hex` and `ZEND_WRONG_PARAM_COUNT` are gone from PHP 8.6; only
+  master builds, so the Dockerfile would have to pin commit `a6ce1e6`.
+- Moodle's `composer.lock` pins `ezyang/htmlpurifier`, `lcobucci/jwt`,
+  `league/oauth2-server`, `openspout/openspout` and `slim/slim`, all capped at
+  `~8.5.0`. The entrypoint runs `composer install` at boot, so the container
+  restart-loops before Apache starts.
+
+The PHP code itself is fine: with the composer step skipped, cron,
+`purge_caches.php` and `check_database_schema.php` all passed on 8.6.
+
+To back out, restore `php/Dockerfile` and run `docker compose up -d --no-build`
+while the old image is still present, or reload `backup/images/` as above.
+Retry when a Moodle release allows 8.6 in its lock file and phpredis ships a tag
+that compiles on it.
+
 ### Custom language pack
 
 Open `/admin/tool/customlang/import.php?lng=vi` directly to reach the ZIP form.

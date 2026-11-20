@@ -268,6 +268,27 @@ MySQL; phải sao chép các phần đó riêng. Dữ liệu MySQL nằm trong v
 đã cố định là `moodle-server-moodle:5.3`, `moodle-caddy:2.11` và
 `moodle-cetusguard:v1` nên thư mục dự án có thể đặt tên bất kỳ.
 
+### Thử PHP 8.6
+
+Đã thử ngày 2026-11-20. `php:8.6-fpm` có sẵn và Moodle 5.3 chạy được trên đó,
+nhưng image chưa khởi động được:
+
+- `phpredis` 6.3.0 không biên dịch được. `zval_dtor`, `XtOffsetOf`,
+  `php_hash_bin2hex` và `ZEND_WRONG_PARAM_COUNT` đã bị gỡ khỏi PHP 8.6; chỉ
+  master build được, nên Dockerfile phải ghim commit `a6ce1e6`.
+- `composer.lock` của Moodle ghim `ezyang/htmlpurifier`, `lcobucci/jwt`,
+  `league/oauth2-server`, `openspout/openspout` và `slim/slim`, tất cả giới hạn
+  `~8.5.0`. Entrypoint chạy `composer install` lúc khởi động nên container
+  restart liên tục trước khi Apache lên.
+
+Bản thân mã PHP không lỗi: khi bỏ bước composer, cron, `purge_caches.php` và
+`check_database_schema.php` đều chạy qua trên 8.6.
+
+Để quay lại, khôi phục `php/Dockerfile` rồi chạy `docker compose up -d --no-build`
+khi image cũ còn trên máy, hoặc nạp lại `backup/images/` như trên. Thử lại khi
+bản Moodle mới cho phép 8.6 trong lock file và phpredis phát hành tag biên dịch
+được trên 8.6.
+
 ### Gói ngôn ngữ tùy chỉnh
 
 Mở thẳng `/admin/tool/customlang/import.php?lng=vi` để vào form nhập ZIP. Mục

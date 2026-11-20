@@ -80,6 +80,7 @@ trường của container khác.
 |---|---|---|
 | Nâng cấp thủ công | Downtime và sai sót con người ở mỗi bản phát hành | Cao |
 | `.htaccess` có thể bị gói mới ghi đè | Schema bị tải xuống được cho tới khi khôi phục | Trung bình |
+| PHP giữ ở 8.5 | 8.6 hỏng ở hai chỗ: phpredis 6.3.0 không biên dịch được (chỉ master chưa phát hành hỗ trợ) và các gói Composer đã khoá của Moodle yêu cầu `~8.5.0`, nên bước cài lúc khởi động làm container restart liên tục | Thấp |
 | `MOODLE_WWWROOT` phải khớp địa chỉ công khai | Giá trị sai làm hỏng liên kết, chuyển hướng và cookie; lúc khởi động chỉ cảnh báo | Trung bình |
 | `docs/` bị gitignore | Tri thức vận hành chỉ nằm trên một máy | Trung bình |
 | Không monitoring, không alert | Người dùng phát hiện lỗi trước đội vận hành | Cao |
