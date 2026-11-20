@@ -183,8 +183,10 @@ Directories are mode `755` and files `644`. To force a different UID/GID, set
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-If files are already owned by `root`, run `bash scripts/fix-perms.sh`; see
-[NOTES.md](NOTES.md#files-owned-by-root) for details.
+If files are already owned by `root`, or `tar` stops with `Permission denied` on
+`backup/restic`, run `bash scripts/fix-perms.sh --check` and then
+`bash scripts/fix-perms.sh`; see [NOTES.md](NOTES.md#files-owned-by-root) for
+details.
 
 ## Operations
 

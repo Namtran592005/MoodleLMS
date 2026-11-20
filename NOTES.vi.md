@@ -268,6 +268,38 @@ MySQL; phải sao chép các phần đó riêng. Dữ liệu MySQL nằm trong v
 đã cố định là `moodle-server-moodle:5.3`, `moodle-caddy:2.11` và
 `moodle-cetusguard:v1` nên thư mục dự án có thể đặt tên bất kỳ.
 
+### Sao lưu cả thư mục triển khai ra tệp tar
+
+`backup/restic` do restic chạy bằng root tạo ra, và một lần `docker exec` thủ
+công có thể để lại tệp root trong `moodledata`, nên tar chạy bằng tài khoản đăng
+nhập sẽ dừng với `Cannot open: Permission denied`. Kiểm tra trước rồi sửa:
+
+```bash
+bash scripts/fix-perms.sh --check
+bash scripts/fix-perms.sh
+```
+
+```bash
+cd ~/projects/moodle-server
+sudo tar -czf /home/ubuntu/moodle_move.tar.gz \
+  --exclude=./logs \
+  --exclude=./backup/images \
+  --exclude=./moodledata/sessions \
+  --exclude=./moodledata/cache \
+  --exclude=./moodledata/localcache \
+  --exclude=./moodledata/temp \
+  --exclude=./moodledata/muc \
+  .
+sudo chown "$USER:$USER" /home/ubuntu/moodle_move.tar.gz
+chmod 600 /home/ubuntu/moodle_move.tar.gz
+```
+
+Giữ `./backup/restic` trong tệp nén. Dữ liệu MySQL nằm trong volume
+`moodle-server_moodle_db_data` chứ không nằm trong thư mục, nên kho restic là
+bản sao database duy nhất mà tệp tar mang theo. Bỏ `./backup/images` tiết kiệm
+khoảng 640 MB; chỉ cần giữ lại khi máy mới không có mạng. Tệp nén chứa `.env`
+với mật khẩu database và restic, nên để quyền `600` và không tải lên nơi công khai.
+
 ### Thử PHP 8.6
 
 Đã thử ngày 2026-11-20. `php:8.6-fpm` có sẵn và Moodle 5.3 chạy được trên đó,
@@ -353,6 +385,10 @@ Theo thứ tự, job làm như sau:
 7. Dọn snapshot cũ rồi prune: `--tag db --keep-last 2` và
    `--tag files --keep-daily 7`, sau đó một lần `restic prune` để thật sự giải
    phóng các khối không còn snapshot nào dùng.
+8. Trả lại quyền sở hữu kho cho tài khoản host. Job chạy bằng root nên kết thúc
+   bằng `chown -R "${PUID}:${PGID}"` trên `backup/restic`, kể cả khi lỗi. Root
+   vẫn đọc ghi bình thường; tài khoản host có thể tar hoặc copy thư mục mà không
+   cần `sudo`.
 
 Hai snapshot thay vì một chính là điều kiện để giới hạn 2 bản DB: một snapshot gộp
 chỉ có thể giữ hoặc bỏ cả cụm, nên giữ 2 bản sẽ mất luôn phần tệp. Hai snapshot
@@ -693,13 +729,26 @@ chừng.
 
 ### Tệp thuộc root
 
-Triệu chứng: Moodle báo không ghi được cache, hoặc tệp mới trong `moodle/` thuộc
-`root`. Nguyên nhân: chạy `docker exec` mà thiếu `-u www-data`.
+Triệu chứng: Moodle báo không ghi được cache, `tar` dừng với
+`Cannot open: Permission denied` trên `backup/restic`, hoặc tệp mới trong
+`moodle/` thuộc `root`. Nguyên nhân: chạy `docker exec` mà thiếu `-u www-data`,
+và job restic chạy bằng root bên trong container.
 
 ```bash
-bash scripts/fix-perms.sh
+bash scripts/fix-perms.sh --check   # liet ke muc tai khoan host khong doc duoc
+bash scripts/fix-perms.sh           # sua roi bao cao lai
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
+
+Script gọi `sudo`; khi chạy bằng root thì chỉ rõ chủ sở hữu:
+`bash scripts/fix-perms.sh --user ubuntu`. Script giao `moodle`, `moodledata` và
+`backup` (gồm cả kho restic) cho tài khoản host, giữ `logs/mysql` và `logs/redis`
+thuộc container và chỉ thêm quyền đọc cho nhóm, đồng thời bỏ quyền ghi cho
+`other` ở những tệp nó chạm tới. `--check` trả mã lỗi khi còn tệp không đọc được,
+nên dùng được như bước chặn trước khi tar hoặc backup.
+
+Job restic đã tự chown kho ở cuối mỗi lần chạy, nên trường hợp tar chỉ còn sau
+một lần chạy tay bằng root. Khi đó chạy `bash scripts/fix-perms.sh` một lần.
 
 ### 403 với install.xml là đúng
 

@@ -180,7 +180,9 @@ Thư mục `755`, tệp `644`. Khi cần ép UID/GID khác, điền `PUID` và `
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
 
-Nếu đã có tệp thuộc `root`, chạy `bash scripts/fix-perms.sh`; chi tiết trong
+Nếu đã có tệp thuộc `root`, hoặc `tar` dừng với `Permission denied` trên
+`backup/restic`, chạy `bash scripts/fix-perms.sh --check` rồi
+`bash scripts/fix-perms.sh`; chi tiết trong
 [NOTES.vi.md](NOTES.vi.md#tệp-thuộc-root).
 
 ## Vận hành

@@ -20,7 +20,18 @@ esac
 
 mkdir -p "$DUMP_DIR"
 umask 077
-trap 'rm -f "$TMP" "$DUMP"' EXIT INT TERM
+
+# Job chay bang root trong container nen tep repo thuoc root va chi root doc
+# duoc. Chown lai cho tai khoan host sau moi lan chay (ke ca khi loi) de tar,
+# copy hoac restic tren host khong can sudo; root van ghi binh thuong.
+OWNER="${PUID:-1000}:${PGID:-1000}"
+cleanup() {
+    rm -f "$TMP" "$DUMP"
+    case "$RESTIC_REPOSITORY" in
+        /*) chown -R "$OWNER" "$RESTIC_REPOSITORY" 2>/dev/null || true ;;
+    esac
+}
+trap cleanup EXIT INT TERM
 
 if ! restic snapshots >/dev/null 2>&1; then
     echo "[restic] khoi tao repo $RESTIC_REPOSITORY"

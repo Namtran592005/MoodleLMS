@@ -268,6 +268,39 @@ copy those separately. The database lives in the `moodle_db_data` volume, and
 `moodle-server-moodle:5.3`, `moodle-caddy:2.11` and `moodle-cetusguard:v1`,
 so the directory can have any name.
 
+### Copying the deployment with tar
+
+`backup/restic` is written by restic running as root, and a manual `docker exec`
+can leave root files in `moodledata`, so a tar started as the login account
+stops with `Cannot open: Permission denied`. Check first, then fix:
+
+```bash
+bash scripts/fix-perms.sh --check
+bash scripts/fix-perms.sh
+```
+
+```bash
+cd ~/projects/moodle-server
+sudo tar -czf /home/ubuntu/moodle_move.tar.gz \
+  --exclude=./logs \
+  --exclude=./backup/images \
+  --exclude=./moodledata/sessions \
+  --exclude=./moodledata/cache \
+  --exclude=./moodledata/localcache \
+  --exclude=./moodledata/temp \
+  --exclude=./moodledata/muc \
+  .
+sudo chown "$USER:$USER" /home/ubuntu/moodle_move.tar.gz
+chmod 600 /home/ubuntu/moodle_move.tar.gz
+```
+
+Keep `./backup/restic` in the archive. MySQL data lives in the
+`moodle-server_moodle_db_data` volume, not in the directory, so the repository
+is the only database copy the tar carries. Leaving out `./backup/images` saves
+about 640 MB and only matters when the new host has no network. The archive
+contains `.env` with the database and restic passwords, so keep mode `600` and
+do not upload it.
+
 ### Trying PHP 8.6
 
 Tested 2026-11-20. `php:8.6-fpm` exists and Moodle 5.3 runs on it, but the
@@ -355,6 +388,10 @@ In order, the job:
 7. Forgets old snapshots and prunes: `--tag db --keep-last 2` and
    `--tag files --keep-daily 7`, then one `restic prune` to actually free the
    chunks no snapshot uses.
+8. Gives the repository back to the host account. The job runs as root, so it
+   ends with `chown -R "${PUID}:${PGID}"` on `backup/restic`, including when it
+   fails. Root still reads and writes the repository; the host account can tar
+   or copy it without `sudo`.
 
 Two snapshots instead of one is what makes the 2-copy limit possible: a single
 combined snapshot can only be kept or dropped as a whole, so keeping 2 would
@@ -714,13 +751,27 @@ upgrade to finish instead of restarting mid-way.
 
 ### Files owned by root
 
-Symptom: permission denied when Moodle writes cache, or new files under
-`moodle/` belong to `root`. Cause: `docker exec` without `-u www-data`.
+Symptom: Moodle reports it cannot write cache, `tar` stops with
+`Cannot open: Permission denied` on `backup/restic`, or new files under
+`moodle/` belong to `root`. Cause: `docker exec` without `-u www-data`, and the
+restic job runs as root inside the container.
 
 ```bash
-bash scripts/fix-perms.sh
+bash scripts/fix-perms.sh --check   # list what the host account cannot read
+bash scripts/fix-perms.sh           # fix, then report again
 docker exec -u www-data moodle_web php /var/www/html/admin/cli/purge_caches.php
 ```
+
+The script calls `sudo`; when started as root, name the owner:
+`bash scripts/fix-perms.sh --user ubuntu`. It gives `moodle`, `moodledata` and
+`backup` (including the restic repository) to the host account, leaves
+`logs/mysql` and `logs/redis` owned by their containers and only adds group
+read, and drops world write from files it touches. `--check` exits non-zero when
+anything is unreadable, so it can gate a backup or tar step.
+
+The restic job already chowns its repository at the end of every run, so the tar
+case only appears after a manual run as root. In that case run
+`bash scripts/fix-perms.sh` once.
 
 ### 403 on install.xml is expected
 
