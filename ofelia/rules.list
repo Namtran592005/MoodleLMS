@@ -1,8 +1,3 @@
-! CetusGuard allowlist for Ofelia.
-! /_ping, /version and /info are allowed by the built-in rules.
-! Only exec create/start/inspect is allowed, and only on these containers.
-! Keep container names in sync with ofelia/config.ini and docker-compose.yml.
-
 POST %API_PREFIX%/containers/moodle_web/exec
 POST %API_PREFIX%/exec/%CONTAINER_ID%/start
 GET %API_PREFIX%/exec/%CONTAINER_ID%/json
