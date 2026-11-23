@@ -1,4 +1,4 @@
-<?php  // Moodle configuration file
+<?php
 
 unset($CFG);
 global $CFG;
@@ -18,7 +18,6 @@ $CFG->dboptions = array (
   'dbcollation' => 'utf8mb4_unicode_ci',
 );
 
-// Đọc từ .env để không phải sửa tệp khi đổi tên miền hoặc bật HTTPS.
 $CFG->wwwroot   = getenv('MOODLE_WWWROOT') ?: 'http://localhost';
 $CFG->dataroot  = '/var/www/moodledata';
 $CFG->admin     = 'admin';
@@ -28,11 +27,8 @@ if (getenv('MOODLE_SSLPROXY') === 'true') {
     $CFG->sslproxy = true;
 }
 
-$CFG->directorypermissions = 0755;   // Không dùng 0777
+$CFG->directorypermissions = 0755;
 
 $CFG->cachejs = true;
 
 require_once(__DIR__ . '/lib/setup.php');
-
-// There is no php closing tag in this file,
-// it is intentional because it prevents trailing whitespace problems!
