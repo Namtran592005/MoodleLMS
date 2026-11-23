@@ -12,7 +12,7 @@ backup/
 logs/
 
 docs/
-scripts/gen_docs.py
+docs/gen_docs.py
 
 *.sql
 *.tar.gz
