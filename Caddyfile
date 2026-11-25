@@ -24,7 +24,7 @@
 					path /login/index.php /login/token.php
 				}
 				key {remote_host}
-				events 30
+				events 500
 				window 1m
 				ipv6_prefix 64
 			}
