@@ -1,4 +1,8 @@
 #!/bin/sh
+# Nạp image từ tệp đã xuất để chạy offline, không build và không pull.
+#
+# Usage: sh scripts/images-load.sh [input.tar.gz]
+# Default input: backup/images/moodle-images.tar.gz
 set -eu
 
 cd "$(dirname "$0")/.."

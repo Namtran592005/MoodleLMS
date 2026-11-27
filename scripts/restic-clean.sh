@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Usage: bash scripts/restic-clean.sh [--dry-run] [--repo]
+#   mac dinh   xoa toan bo snapshot, giu kho va mat khau
+#   --repo     xoa ca thu muc backup/restic, lan backup sau tu khoi tao moi
+#   --dry-run  chi in ra se lam gi, khong xoa
+#
+# Chi dung khi that su muon bo lich su backup. Khong dung trong van hanh binh thuong.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"

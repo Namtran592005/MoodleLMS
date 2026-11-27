@@ -61,7 +61,7 @@ on 2026-11-19. The remaining one, copies outside the server, is still open.
 | Ofelia can exec as root in `moodle_web` through the proxy | A compromised scheduler controls the site and, through the database credentials, its data, but cannot create containers or reach the host | High |
 | Secrets in plain `.env` | No rotation, no secrets manager, readable by the deploy account | Medium |
 | No fail2ban or WAF | Only login endpoints are rate-limited; scanning and abuse are not blocked | Medium |
-| Mutable minor image tags (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) | Patch releases still arrive without notice; builds are not digest-pinned | Low |
+| Mutable minor image tags (`mysql:9.7`, `redis:8.12`, `mcuadros/ofelia:0.3`) | Patch releases still arrive without notice; builds are not digest-pinned | Low |
 | No image scanning or signing | Vulnerable base images go unnoticed | Medium |
 | No enforced 2FA or SSO | Password-only accounts, no central identity | Medium |
 | CSP still needs `'unsafe-inline'` and `'unsafe-eval'` | Moodle prints inline scripts and TinyMCE calls `new Function`, so injected inline script is not blocked | Medium |

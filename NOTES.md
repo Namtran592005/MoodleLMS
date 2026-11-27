@@ -265,7 +265,7 @@ Or use `sh scripts/images-save.sh` and `sh scripts/images-load.sh`. The archive
 holds only Docker images, not `moodle/`, `moodledata/`, `.env` or MySQL data;
 copy those separately. The database lives in the `moodle_db_data` volume, and
 `backup/restic` contains a recent dump of it. Image names are fixed as
-`moodle-server-moodle:5.3`, `moodle-caddy:2.11` and `moodle-cetusguard:v1`,
+`moodle-web:5.3`, `moodle-caddy:2.11` and `moodle-cetusguard:v1`,
 so the directory can have any name.
 
 ### Copying the deployment with tar

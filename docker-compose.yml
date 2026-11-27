@@ -90,7 +90,7 @@ services:
       - moodle_net
 
   redis:
-    image: redis:8.10
+    image: redis:8.12
     container_name: moodle_redis
     restart: always
     logging: *default-logging
@@ -130,7 +130,7 @@ services:
       - moodle_net
 
   moodle:
-    image: moodle-server-moodle:5.3
+    image: moodle-web:5.3
     build:
       context: ./php
       args:

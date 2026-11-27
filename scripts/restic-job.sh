@@ -1,4 +1,7 @@
 #!/bin/sh
+# Sao luu moodledata bang restic.
+# Chay trong container moodle: RESTIC_PASSWORD lay tu .env,
+# repo dat tai /backup/restic (bind mount ./backup).
 set -eu
 
 : "${RESTIC_PASSWORD:?RESTIC_PASSWORD chua duoc dat trong .env}"
@@ -21,9 +24,6 @@ esac
 mkdir -p "$DUMP_DIR"
 umask 077
 
-# Job chay bang root trong container nen tep repo thuoc root va chi root doc
-# duoc. Chown lai cho tai khoan host sau moi lan chay (ke ca khi loi) de tar,
-# copy hoac restic tren host khong can sudo; root van ghi binh thuong.
 OWNER="${PUID:-1000}:${PGID:-1000}"
 cleanup() {
     rm -f "$TMP" "$DUMP"

@@ -61,7 +61,7 @@ Rủi ro còn lại, bản sao ngoài máy chủ, vẫn đang mở.
 | Ofelia exec được root trong `moodle_web` qua proxy | Scheduler bị chiếm kiểm soát website và, qua thông tin đăng nhập cơ sở dữ liệu, cả dữ liệu; nhưng không tạo được container hay chạm host | Cao |
 | Bí mật nằm dạng chữ trong `.env` | Không xoay vòng, không secrets manager, tài khoản triển khai đọc được | Trung bình |
 | Không fail2ban, không WAF | Chỉ endpoint đăng nhập bị giới hạn; quét cổng và lạm dụng không bị chặn | Trung bình |
-| Thẻ image còn trôi trong dòng minor (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) | Bản vá vẫn đến mà không báo trước; build chưa ghim digest | Thấp |
+| Thẻ image còn trôi trong dòng minor (`mysql:9.7`, `redis:8.12`, `mcuadros/ofelia:0.3`) | Bản vá vẫn đến mà không báo trước; build chưa ghim digest | Thấp |
 | Không quét hay ký image | Image nền có lỗ hổng mà không biết | Trung bình |
 | Không bắt buộc 2FA hay SSO | Chỉ mật khẩu, không có định danh tập trung | Trung bình |
 | CSP vẫn cần `'unsafe-inline'` và `'unsafe-eval'` | Moodle in script nội tuyến và TinyMCE gọi `new Function`, nên script chèn trong trang không bị chặn | Trung bình |

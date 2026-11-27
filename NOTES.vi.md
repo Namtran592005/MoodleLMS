@@ -265,7 +265,7 @@ Hoặc dùng `sh scripts/images-save.sh` và `sh scripts/images-load.sh`. Tệp 
 chỉ chứa image Docker, không chứa `moodle/`, `moodledata/`, `.env` hay dữ liệu
 MySQL; phải sao chép các phần đó riêng. Dữ liệu MySQL nằm trong volume
 `moodle_db_data`, và `backup/restic` có sẵn một bản dump gần nhất. Tên image
-đã cố định là `moodle-server-moodle:5.3`, `moodle-caddy:2.11` và
+đã cố định là `moodle-web:5.3`, `moodle-caddy:2.11` và
 `moodle-cetusguard:v1` nên thư mục dự án có thể đặt tên bất kỳ.
 
 ### Sao lưu cả thư mục triển khai ra tệp tar

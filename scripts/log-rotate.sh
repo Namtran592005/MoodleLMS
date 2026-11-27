@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+# Usage: sh scripts/log-rotate.sh
+# copytruncate: cac service deu ghi append nen an toan
 D=$(date +%F)
 
 chmod -R a+r /logs 2>/dev/null || true

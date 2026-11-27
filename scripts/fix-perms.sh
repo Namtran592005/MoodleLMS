@@ -1,4 +1,6 @@
 #!/bin/sh
+# Usage: sh scripts/fix-perms.sh
+# Chuẩn hóa owner về user SSH hiện tại; .env phải thuộc user này để đọc được
 set -e
 cd "$(dirname "$0")/.."
 
@@ -40,7 +42,6 @@ fi
 U="$(id -u "$OWNER_USER")"
 G="$(id -g "$OWNER_USER")"
 
-# Chay lenh kiem tra bang dung tai khoan host, ke ca khi script dang la root.
 run_as_owner() {
   if [ "$(id -u)" -eq 0 ]; then
     setpriv --reuid "$U" --regid "$G" --clear-groups "$@"
@@ -49,7 +50,6 @@ run_as_owner() {
   fi
 }
 
-# Liet ke muc tai khoan host khong doc duoc, tra ve so luong qua COUNT.
 check_unreadable() {
   LIST="$(mktemp)"
   run_as_owner find moodle moodledata backup logs -xdev ! -readable -print \
@@ -72,17 +72,12 @@ fi
 
 echo "Chuan hoa quyen ve ${U}:${G} (${OWNER_USER})"
 
-# 1. Source, du lieu Moodle va backup thuoc tai khoan host. Gom ca backup/restic:
-#    restic chay bang root trong container nen tep repo do root tao, chown lai
-#    de tar/copy khong can sudo (root van ghi duoc sau do).
 for d in moodle moodledata backup; do
   [ -d "$d" ] || continue
   echo "  - $d"
   $SUDO chown -R "${U}:${G}" "$d"
 done
 
-# 2. Log: MySQL va Redis tu chown thu muc cua chung luc khoi dong, nen chi mo
-#    quyen doc cho nhom host thay vi doi chu so huu.
 for d in logs/caddy logs/php logs/moodle; do
   [ -d "$d" ] || continue
   echo "  - $d"
@@ -105,8 +100,6 @@ for f in .env docker-compose.yml Caddyfile; do
 done
 [ -f .env ] && $SUDO chmod 600 .env
 
-# 3. Bo quyen ghi cho nguoi khac. moodledata va backup khong mo cho other doc,
-#    vi chung chua tep nguoi dung va ban dump co mat khau bam.
 find moodle -perm -o+w -type d -exec $SUDO chmod 755 {} +
 find moodle -perm -o+w -type f -exec $SUDO chmod u+rwX,go+r-w {} +
 find moodledata -perm -o+w -type d -exec $SUDO chmod 750 {} +

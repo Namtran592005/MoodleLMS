@@ -22,8 +22,8 @@ Phần tính toán RAM, tinh chỉnh và cách xử lý lỗi nằm trong
 |---|---|---|---|
 | `caddy` | build `./caddy` (`moodle-caddy:2.11`) | Reverse proxy (Caddy 2.11 + rate-limit), TLS tự động, header bảo mật | 80, 443, 443/udp |
 | `db` | `mysql:9.7` | MySQL 9.7 LTS, `utf8mb4` | nội bộ 3306 |
-| `redis` | `redis:8.10` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
-| `moodle` | build `./php` (`moodle-server-moodle:5.3`) | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | nội bộ 80 |
+| `redis` | `redis:8.12` | Cache và session, giới hạn 256 MB | nội bộ 6379 |
+| `moodle` | build `./php` (`moodle-web:5.3`) | Apache 2.4 event MPM + PHP-FPM 8.5, webroot `/var/www/html/public` | nội bộ 80 |
 | `socket-proxy` | build `./cetusguard` (`moodle-cetusguard:v1`) | Lọc Docker API, chỉ cho exec vào container Moodle | nội bộ 2375 |
 | `cron` | `mcuadros/ofelia:0.3` | Cron Moodle, backup restic (cơ sở dữ liệu và tệp), xoay log | không mở |
 
@@ -132,9 +132,9 @@ docker compose pull db redis cron
 docker compose up -d --build
 ```
 
-Ba image nền (`mysql:9.7`, `redis:8.10`, `mcuadros/ofelia:0.3`) được pull trực
+Ba image nền (`mysql:9.7`, `redis:8.12`, `mcuadros/ofelia:0.3`) được pull trực
 tiếp; `moodle`, `caddy` và `socket-proxy` build từ `./php`, `./caddy` và
-`./cetusguard`, gắn tag `moodle-server-moodle:5.3`, `moodle-caddy:2.11` và
+`./cetusguard`, gắn tag `moodle-web:5.3`, `moodle-caddy:2.11` và
 `moodle-cetusguard:v1`. Bản build Caddy bắt đầu từ `caddy:2.11-*`, bản build proxy
 từ `hectorm/cetusguard:v1` và chỉ thêm busybox tĩnh cho healthcheck. Lần chạy đầu
 mất 2 đến 10 phút vì phải khởi tạo MySQL, build image, chạy `composer install` và

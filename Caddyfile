@@ -1,8 +1,11 @@
 :80 {
+	tls {
+		key_type p384
+	}
 	@https {
 		protocol https
 	}
-	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 
 	handle {
 		encode gzip
