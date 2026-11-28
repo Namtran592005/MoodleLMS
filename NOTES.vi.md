@@ -280,7 +280,7 @@ bash scripts/fix-perms.sh
 ```
 
 ```bash
-cd ~/projects/moodle-server
+cd ~/moodle
 sudo tar -czf /home/ubuntu/moodle_move.tar.gz \
   --exclude=./logs \
   --exclude=./backup/images \
